@@ -1,5 +1,5 @@
 """
-Copyright (c) 2012, Zenotech Ltd
+Copyright (c) 2012-2017, Zenotech Ltd
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    * Neither the name of the <organization> nor the
+    * Neither the name of Zenotech Ltd nor the
       names of its contributors may be used to endorse or promote products
       derived from this software without specific prior written permission.
 
@@ -27,15 +27,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import libzCFDLogger
 from zMessage import Message
 
+
 class Logger:
     """Wrapper for C++ based logger"""
 
-    def __init__(self,rank,filename='BLANK',connector=0):
+    def __init__(self, rank, filename='BLANK', connector=0):
         self.logger = libzCFDLogger.getLogger()
         self.connector = connector
 
         try:
-            fh = libzCFDLogger.FileLogger(filename);
+            fh = libzCFDLogger.FileLogger(filename)
         except Exception, e:
             print e
             raise
@@ -50,15 +51,15 @@ class Logger:
 
         self.debug('Initialised Logging for rank %s' % (rank))
 
-    def info(self,message):
+    def info(self, message):
         self.logger.info(message)
         if self.connector != 0:
             self.connector.send_message(Message.log(message))
 
-    def debug(self,message):
+    def debug(self, message):
         self.logger.debug(message)
 
-    def error(self,message):
+    def error(self, message):
         self.logger.error(message)
         if self.connector != 0:
             self.connector.send_message(Message.log(message))

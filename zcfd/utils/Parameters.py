@@ -1,5 +1,5 @@
 """
-Copyright (c) 2012, Zenotech Ltd
+Copyright (c) 2012-2017, Zenotech Ltd
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    * Neither the name of the <organization> nor the
+    * Neither the name of Zenotech Ltd nor the
       names of its contributors may be used to endorse or promote products
       derived from this software without specific prior written permission.
 
@@ -33,13 +33,14 @@ from zcfd.utils import config
 # Timestamp of parameter file when file was last read
 last_timestamp = 0
 
+
 class Parameters:
-        
+
     default = '''
 import zutil
-    
 
-parameters = { 
+
+parameters = {
 
  # units for dimensional quantities
 'units' : 'SI',
@@ -53,7 +54,7 @@ parameters = {
 'partitioner' : 'metis',
 
 # time marching properties
-'time marching' : { 
+'time marching' : {
                    'unsteady' : {
                                  'total time' : 1.0,
                                  'time step' : 1.0,
@@ -66,7 +67,7 @@ parameters = {
                                'kind' : 'local timestep',
                                },
                    # multigrid levels including fine mesh
-                   'multigrid' : 4,            
+                   'multigrid' : 4,
                    'cfl': 2.0,
                    'cycles' : 1000,
                   },
@@ -76,17 +77,17 @@ parameters = {
 'euler' : {
       'order' : 'second',
       'limiter' : 'vanalbada',
-      'precondition' : 'true',                                          
+      'precondition' : 'true',
      },
 'viscous' : {
         'order' : 'second',
         'limiter' : 'vanalbada',
-       'precondition' : 'true',                                          
+       'precondition' : 'true',
       },
 'RANS' : {
                'order' : 'second',
                'limiter' : 'vanalbada',
-               'precondition' : 'true',                                          
+               'precondition' : 'true',
                'turbulence' : {
                                'model' : 'sst',
                               },
@@ -94,7 +95,7 @@ parameters = {
 'DES' : {
               'order' : 'second',
               'limiter' : 'vk',
-              'precondition' : 'true',                                          
+              'precondition' : 'true',
               'turbulence' : {
                               'model' : 'sst',
                               },
@@ -102,7 +103,7 @@ parameters = {
 'LES' : {
                   'order' : 'second',
                   'limiter' : 'vk',
-                  'precondition' : 'true',                                          
+                  'precondition' : 'true',
                    'turbulence' : {
                                   'model' : 'sst',
                                   },
@@ -125,7 +126,7 @@ parameters = {
                 },
            #'viscosity' : 0.0,
            'Reynolds No' : 1.0e6,
-           'Reference Length' : 1.0, 
+           'Reference Length' : 1.0,
           'turbulence intensity': 0.01,
           'eddy viscosity ratio': 0.1,
           },
@@ -173,10 +174,10 @@ parameters = {
                   'surface variables': ['V','p','T','rho','cp','yplus'],
                   'volume variables': ['V','p','T','rho','eddy'],
                   'frequency' : 100,
-                 },         
+                 },
 'report' : {
             'frequency' : 10,
-          },                   
+          },
 }
 
 ############################
@@ -189,118 +190,123 @@ parameters = {
 #
 ############################
 
-'''    
-       
+'''
+
     def create_defaults(self):
 
         # Populate default parameters
         exec(self.default)
-        
+
         config.parameters = locals()["parameters"]
-        
+
         #config.logger.debug("Default Parameters: \n "+'\n '.join(['%s: %s' % (key, value) for (key, value) in config.parameters.items()]))
-        
-    def read(self,configfile):
-        config.logger.debug(__file__+" "+__name__+":read")
-        sys.path.insert(0,os.getcwd())
+
+    def read(self, configfile):
+        config.logger.debug(__file__ + " " + __name__ + ":read")
+        sys.path.insert(0, os.getcwd())
         configmodule = __import__(configfile)
-        
+
         old_dict = configmodule.__dict__.copy()
         try:
             configmodule = reload(configmodule)
         except:
             configmodule.__dict__.update(old_dict)
-                
-        parameters = getattr(sys.modules[configfile],'parameters')
+
+        parameters = getattr(sys.modules[configfile], 'parameters')
         # TODO Need to improve this
         config.parameters = dict(config.parameters, **parameters)
-        
+
         props = os.stat(config.controlfile)
         global last_timestamp
         last_timestamp = props.st_mtime
-        
-        config.logger.debug("Parameters: \n "+'\n '.join(['%s: %s' % (key, value) for (key, value) in config.parameters.items()]))
-        
-    def read_if_changed(self,casename,configfile):
-        global last_timestamp 
+
+        config.logger.debug("Parameters: \n " + '\n '.join(
+            ['%s: %s' % (key, value) for (key, value) in config.parameters.items()]))
+
+    def read_if_changed(self, casename, configfile):
+        global last_timestamp
         props = os.stat(configfile)
         if props.st_mtime > last_timestamp:
             self.read(casename)
             return True
         return False
-    
-    def write(self,configfile):
+
+    def write(self, configfile):
         if config.logger != 0:
-            config.logger.debug(__file__+" "+__name__+":write")
+            config.logger.debug(__file__ + " " + __name__ + ":write")
         # Open control file for writing
-        fp = open(config.controlfile,"w")
+        fp = open(config.controlfile, "w")
         # Write control file in yaml format
         fp.write(self.default)
 
     def read_yaml(self):
-        config.logger.debug(__file__+" "+__name__+":read_yaml")
+        config.logger.debug(__file__ + " " + __name__ + ":read_yaml")
         # Open control file for reading
-        fp = open(config.controlfile,"r")
+        fp = open(config.controlfile, "r")
         # Merge control file with defaults
         config.parameters.update(yaml.load(fp))
-        #print config.parameters['velocity'][0]
-        
+        # print config.parameters['velocity'][0]
+
     def write_yaml(self):
         if config.logger != 0:
-            config.logger.debug(__file__+" "+__name__+":write_yaml")
+            config.logger.debug(__file__ + " " + __name__ + ":write_yaml")
         # Open control file for writing
-        fp = open(config.controlfile,"w")
+        fp = open(config.controlfile, "w")
         # Write control file in yaml format
-        yaml.dump(config.parameters,fp,indent=2);
-        
+        yaml.dump(config.parameters, fp, indent=2)
+
     def create_native(self):
         from cgen import (
             ArrayOf, POD,
-            Block, \
+            Block,
             For, Statement, Struct)
-        #=======================================================================
+        #======================================================================
         # Line Comment Constant Pointer
-        #=======================================================================
+        #======================================================================
         from cgen import dtype_to_ctype
         import numpy
 
-        members=[]
-        code=[]
+        members = []
+        code = []
 
-        for pk,pv in config.parameters.iteritems():
+        for pk, pv in config.parameters.iteritems():
             if isinstance(pv, int):
-                members.append(POD(numpy.int,pk))
-                code.append(Statement("params.%s = extract<%s>(cppdict[\"%s\"])" % (pk,dtype_to_ctype(numpy.int), pk)))
+                members.append(POD(numpy.int, pk))
+                code.append(Statement("params.%s = extract<%s>(cppdict[\"%s\"])" % (
+                    pk, dtype_to_ctype(numpy.int), pk)))
             elif isinstance(pv, float):
-                members.append(POD(numpy.float64,pk))
-                code.append(Statement("params.%s = extract<%s>(cppdict[\"%s\"])" % (pk,dtype_to_ctype(numpy.float64), pk)))
+                members.append(POD(numpy.float64, pk))
+                code.append(Statement("params.%s = extract<%s>(cppdict[\"%s\"])" % (
+                    pk, dtype_to_ctype(numpy.float64), pk)))
             elif isinstance(pv, list):
                 if isinstance(pv[0], int):
-                    members.append(ArrayOf(POD(numpy.int,pk),len(pv)))
-                    code.append(Block([Statement("list v = extract<%s>(cppdict[\"%s\"])" % (list.__name__,pk)),
+                    members.append(ArrayOf(POD(numpy.int, pk), len(pv)))
+                    code.append(Block([Statement("list v = extract<%s>(cppdict[\"%s\"])" % (list.__name__, pk)),
                                        For("unsigned int i  = 0",
                                            "i<len(v)",
                                            "++i",
-                                           Statement("params.%s[i] = extract<%s>(v[i])" % (pk,dtype_to_ctype(numpy.int)))
+                                           Statement("params.%s[i] = extract<%s>(v[i])" % (
+                                               pk, dtype_to_ctype(numpy.int)))
                                            ),
                                        ]))
                 elif isinstance(pv[0], float):
-                    members.append(ArrayOf(POD(numpy.float64,pk),len(pv)))
-                    code.append(Block([Statement("list v = extract<%s>(cppdict[\"%s\"])" % (list.__name__,pk)),
+                    members.append(ArrayOf(POD(numpy.float64, pk), len(pv)))
+                    code.append(Block([Statement("list v = extract<%s>(cppdict[\"%s\"])" % (list.__name__, pk)),
                                        For("unsigned int i  = 0",
                                            "i < len(v)",
                                            "++i",
-                                           Block([Statement("params.%s[i] = extract<%s>(v[i])" % (pk,dtype_to_ctype(numpy.float64))),
-                                                  Statement("//std::cout << params.%s[i] << std::endl" % (pk))
+                                           Block([Statement("params.%s[i] = extract<%s>(v[i])" % (pk, dtype_to_ctype(numpy.float64))),
+                                                  Statement(
+                                                      "//std::cout << params.%s[i] << std::endl" % (pk))
                                                   ])
                                            ),
                                        ]))
 
-        mystruct = Struct('Parameters',members)
+        mystruct = Struct('Parameters', members)
         mycode = Block(code)
 
-        #print mystruct
-        #print mycode
+        # print mystruct
+        # print mycode
 
         from jinja2 import Template
 
@@ -312,16 +318,16 @@ parameters = {
 #include <boost/python/dict.hpp>
 #include <boost/python/str.hpp>
 #include <stdexcept>
-#include <iostream> 
+#include <iostream>
 
 {{my_struct}}
 
 Parameters params;
 
-void CopyDictionary(boost::python::object pydict) 
+void CopyDictionary(boost::python::object pydict)
 {
     using namespace boost::python;
-    
+
     extract< dict > cppdict_ext(pydict);
     if(!cppdict_ext.check()){
         throw std::runtime_error(
@@ -341,31 +347,32 @@ BOOST_PYTHON_MODULE({{my_module}})
    boost::python::def("copy_dict", &CopyDictionary);
 }
         """)
-        rendered_tpl = tpl.render(my_module="NativeParameters",my_extractor=mycode,my_struct=mystruct)
-        
-        #print rendered_tpl
+        rendered_tpl = tpl.render(
+            my_module="NativeParameters", my_extractor=mycode, my_struct=mystruct)
+
+        # print rendered_tpl
 
         from codepy.toolchain import NVCCToolchain
         import codepy.toolchain
 
         kwargs = codepy.toolchain._guess_toolchain_kwargs_from_python_config()
-        #print kwargs
-        kwargs["cc"]="nvcc"
-        #kwargs["cflags"]=["-m64","-x","cu","-Xcompiler","-fPIC","-ccbin","/opt/local/bin/g++-mp-4.4"]
-        kwargs["cflags"]=["-m64","-x","cu","-Xcompiler","-fPIC"]
+        # print kwargs
+        kwargs["cc"] = "nvcc"
+        # kwargs["cflags"]=["-m64","-x","cu","-Xcompiler","-fPIC","-ccbin","/opt/local/bin/g++-mp-4.4"]
+        kwargs["cflags"] = ["-m64", "-x", "cu", "-Xcompiler", "-fPIC"]
         kwargs["include_dirs"].append("/usr/local/cuda/include")
-        kwargs["defines"]=[]
-        kwargs["ldflags"]=["-shared"]
-        #kwargs["libraries"]=["python2.7"]
-        kwargs["libraries"]=["python2.6"]
+        kwargs["defines"] = []
+        kwargs["ldflags"] = ["-shared"]
+        # kwargs["libraries"]=["python2.7"]
+        kwargs["libraries"] = ["python2.6"]
         print kwargs
-        toolchain=NVCCToolchain(**kwargs)
+        toolchain = NVCCToolchain(**kwargs)
 
         from codepy.libraries import add_boost_python
         add_boost_python(toolchain)
 
-
         from codepy.jit import extension_from_string
-        mymod = extension_from_string(toolchain, "NativeParameters", rendered_tpl)
+        mymod = extension_from_string(
+            toolchain, "NativeParameters", rendered_tpl)
 
         mymod.copy_dict(config.parameters)

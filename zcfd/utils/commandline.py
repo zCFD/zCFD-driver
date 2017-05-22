@@ -1,5 +1,5 @@
 """
-Copyright (c) 2012, Zenotech Ltd
+Copyright (c) 2012-2017, Zenotech Ltd
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    * Neither the name of the <organization> nor the
+    * Neither the name of Zenotech Ltd nor the
       names of its contributors may be used to endorse or promote products
       derived from this software without specific prior written permission.
 
@@ -32,51 +32,53 @@ import argparse
 
 
 class ZOption:
+
     def parse(self):
         #config.logger.debug('Start ZOption parse')
         if MPI.COMM_WORLD.Get_rank() > 0:
             usage = argparse.SUPPRESS
-            #parser = OptionParser(usage,add_help_option=False)
-            parser = argparse.ArgumentParser(usage=usage,add_help=False)
+            #parser = OptionParser(usage, add_help_option=False)
+            parser = argparse.ArgumentParser(usage=usage, add_help=False)
         else:
             usage = "usage: %(prog)s [options] PROBLEM-NAME"
-            #parser = OptionParser(usage,version="%prog 1.0",add_help_option=True)
-            parser = argparse.ArgumentParser(usage=usage, description="zCFD command line arguments",add_help=True) 
-        
-        parser.add_argument('problem_name', nargs='?', default='NOT-DEFINED')
-        
+            #parser = OptionParser(usage, version="%prog 1.0", add_help_option=True)
+            parser = argparse.ArgumentParser(
+                usage=usage, description="zCFD command line arguments", add_help=True)
+
+        parser.add_argument('problem_name', nargs='?', default=None)
+
         parser.add_argument('--version', action='version', version='1.0')
-        
-        parser.add_argument("--mq",dest='mq',action='store_const',const=True,default=False,help='Use message queue')
-             
+
+        parser.add_argument("--mq", dest='mq', action='store_const',
+                            const=True, default=False, help='Use message queue')
+
         parser.add_argument("-c", "--case-name", dest="case_name",
-                            metavar="CASE-NAME",default="NOT-DEFINED",help="Case name")
-        #parser.add_argument("-s","--solver", dest="solver",
-        #                  metavar="SOLVER",default="NOT-DEFINED",help="Name of solver to use")
-        parser.add_argument("-d","--device", dest="device",
-                          metavar="DEVICE", default="cpu", help="Execution mode: cpu or gpu [default: %(default)s]")
-        #parser.add_argument("-l","--loglevel", dest="loglevel",
-        #                  metavar="LOGLEVEL", default="INFO", help=argparse.SUPPRESS)
-        args = parser.parse_args();
-        #print args.problem
-        #print options.filename
+                            metavar="CASE-NAME", default=None, help="Case name")
+        # parser.add_argument("-s","--solver", dest="solver",
+        # metavar="SOLVER", default=None, help="Name of solver to use")
+        parser.add_argument("-d", "--device", dest="device",
+                            metavar="DEVICE", default="cpu", help="Execution mode: cpu or gpu [default: %(default)s]")
+        # parser.add_argument("-l","--loglevel", dest="loglevel",
+        # metavar="LOGLEVEL", default="INFO", help=argparse.SUPPRESS)
+        args = parser.parse_args()
+        # print args.problem
+        # print options.filename
         # check number of arguments, verify values, etc.:
-        #if len(args.args) > 1 and MPI.COMM_WORLD.Get_rank() == 0:
+        # if len(args.args) > 1 and MPI.COMM_WORLD.Get_rank() == 0:
         #    parser.error('unrecognised command-line arguments; '
         #             '"%s"' % (args.args[1],))
-        #elif len(args.args):
+        # elif len(args.args):
         if not args.mq:
-            if args.problem_name == 'NOT-DEFINED':
+            if args.problem_name is None:
                 parser.error('Problem name not defined')
-            #if args.solver == "NOT-DEFINED":
+            # if args.solver is None:
             #    parser.error('Please define solver type')
-            if args.case_name == 'NOT-DEFINED':
+            if args.case_name is None:
                 args.case_name = args.problem_name
-        #exit(-1)
+        # exit(-1)
         #config.logger.debug('End ZOption parse')
         return args
 
 if __name__ == "__main__":
     opt = ZOption()
     opt.parse()
-

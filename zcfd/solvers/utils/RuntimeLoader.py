@@ -5,7 +5,8 @@ from zcfd.utils import config
 def load_solver_runtime(params, solver_params):
     required_params = ("device", "precond", "medium", "type", "dg")
     if not all(k in params for k in required_params):
-        raise ValueError("All required parameters not passed to load_solver_runtime")
+        raise ValueError(
+            "All required parameters not passed to load_solver_runtime")
 
     if params['dg']:
         module_name = "libzCFDDGSolver"
@@ -14,7 +15,7 @@ def load_solver_runtime(params, solver_params):
     module_name += params["type"]
 
     if ((type(params["precond"]) is str and params["precond"] == 'true') or
-       (type(params["precond"]) is bool and params["precond"])):
+            (type(params["precond"]) is bool and params["precond"])):
         module_name += "PRECOND"
 
     if params["medium"] == "air":
@@ -37,6 +38,7 @@ def load_solver_runtime(params, solver_params):
         solverlib = importlib.import_module(module_name)
     except Exception as e:
         config.logger.info(" Unable to load " + module_name)
+        config.logger.info(" Error: " + str(e))
         # Failed to find library - try intel
         if params['device'] == "gpu":
             module_name = module_name_stub
@@ -44,8 +46,8 @@ def load_solver_runtime(params, solver_params):
             config.logger.info(" Loading Library: " + module_name)
             solverlib = importlib.import_module(module_name)
         else:
-            raise e 
-        
+            raise e
+
     set_parameters = getattr(solverlib, "set_parameters")
     set_parameters(solver_params)
 
@@ -59,4 +61,3 @@ def load_solver_runtime(params, solver_params):
         ExplicitSolver = getattr(solverlib, solver_type)
 
         return ExplicitSolver((params["device"] == "cpu"))
-

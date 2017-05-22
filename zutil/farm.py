@@ -1,3 +1,29 @@
+"""
+Copyright (c) 2012-2017, Zenotech Ltd
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of Zenotech Ltd nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL ZENOTECH LTD BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
 import math
 import ast
 import sys
@@ -16,70 +42,70 @@ import zutil
 #http://jthatch.com/Terrain2STL/
 
 def create_mesh_sources(array_data_file, farm_centre, turbine_only=False):
-    
+
     # Read file
-    
+
     array_data = {}
-    
+
     with open(array_data_file,"r") as f:
         s = f.read()
         array_data = ast.literal_eval(s)
-    
+
     # Cases
     cases = array_data['Cases']
-    
+
     for (key,value) in cases.items():
         #print key
-    
+
         # Wind direction
         wind_direction = key
-    
+
         # Turbines
         turbines = array_data['Turbines']
-        
+
         # List of tuples
         mesh_source_location = []
-        
+
         for (key,value) in turbines.items():
             #print key
             name = key
             if isinstance(key,int):
                 name = 'A'+str(key)
-            
+
             # Location as a tuple
             turbine_location = (value['X'],value['Y'],float(value['Z']))
-            
+
             # Convert to local coordinates
             turbine_location = convert_to_local_coordinates(turbine_location,farm_centre)
-            
+
             # Compute new location
             turbine_location = get_turbine_location(turbine_location,wind_direction)
-            
+
             turbine_diameter = float(value['RotorDiameter'])
-            # Create line source using turbine diameter            
+            # Create line source using turbine diameter
             source = create_source(turbine_location,turbine_diameter)
             mesh_source_location.append(source)
-            
+
             generate_turbine(name,turbine_location,turbine_diameter,wind_direction)
             if not turbine_only:
                 generate_turbine_region(name,turbine_location,turbine_diameter,wind_direction)
-            
-                
+
+
         if not turbine_only:
             # Write Solar .bac file
             write_solar_bac('wind-'+str(wind_direction)+'.bac',wind_direction,mesh_source_location)
             # Write Solar .ctl file
-            write_control_file('wind-'+str(wind_direction)+'.ctl')  
-    
-    
+            write_control_file('wind-'+str(wind_direction)+'.ctl')
+
+
 def create_turbines(array_data_file, wall_file, volume_file):
-    
+
     array_data = {}
-    
+
     with open(array_data_file,"r") as f:
         s = f.read()
         array_data = ast.literal_eval(s)
-    
+
     # Read terrain
     terrain = PVDReader(FileName=wall_file)
     terrain = CleantoGrid(Input=terrain)
@@ -94,7 +120,7 @@ def create_turbines(array_data_file, wall_file, volume_file):
     transform.Transform = 'Transform'
     transform.Transform.Scale = [1.0, 1.0, 0.0]
     transform.UpdatePipeline()
-    
+
     # create a new 'Probe Location'
     probeLocation = ProbeLocation(Input=transform,ProbeType='Fixed Radius Point Source')
     probeLocation.Tolerance = 2.22044604925031e-16
@@ -105,40 +131,40 @@ def create_turbines(array_data_file, wall_file, volume_file):
     volume.UpdatePipeline()
     hubProbe = ProbeLocation(Input=volume,ProbeType='Fixed Radius Point Source')
     hubProbe.Tolerance = 2.22044604925031e-16
-    
+
 
     # Cases
     cases = array_data['Cases']
-    
+
     for (key,value) in cases.items():
         #print key
-    
+
         # Wind direction
         wind_direction = key
-    
+
         # Turbines
         turbines = array_data['Turbines']
-        
+
         # List of tuples
         location = []
-        
+
         for (key,value) in turbines.items():
             #print key
             name = key
             if isinstance(key,int):
                 name = 'A'+str(key)
-            
+
             # Location as a tuple
             turbine_location = (value['X'],value['Y'],float(value['Z']))
-            
+
             # Find terrain elevation at X and Y
             probeLocation.ProbeType.Center = [turbine_location[0], turbine_location[1], 0.0]
             probeLocation.UpdatePipeline()
-            
+
             ground = probeLocation.GetPointData().GetArray("Elevation").GetValue(0)
-            
+
             turbine_location = (value['X'],value['Y'],ground+float(value['Z']))
-            
+
             turbine_diameter = float(value['RotorDiameter'])
 
             # Get wind direction at hub
@@ -147,100 +173,100 @@ def create_turbines(array_data_file, wall_file, volume_file):
                                          turbine_location[2]]
             hubProbe.UpdatePipeline()
             (u,v) = hubProbe.GetPointData().GetArray("V").GetValue(0)
-            
+
             local_wind_direction = wind_direction(u,v)
-            
+
             # Thrust Coefficient
             tc = value['ThrustCoEfficient']
             try:
                 thrust_coefficient = float(value['ThrustCoEfficient'][-1])
             except:
                  thrust_coefficient = float(value['ThrustCoEfficient'])
-            
+
             turbine_diameter = float(value['RotorDiameter'])
-                        
+
             # Point turbine into the wind
             turbine_normal = [-u,-v,0.0]
             mag = math.sqrt(sum(x**2 for x in turbine_normal))
             turbine_normal = [-u/mag,-v/mag,0.0]
-            
+
             generate_turbine(name,turbine_location,turbine_diameter,wind_direction,True)
             if not turbine_only:
                 generate_turbine_region(name,turbine_location,turbine_diameter,wind_direction,True)
-                
+
             location.append((name,
                              wind_direction,
                              turbine_location,
                              turbine_diameter,
                              thrust_coefficient,
                              turbine_normal))
-              
+
         # Write zone definition
-        write_zcfd_zones('wind-'+str(wind_direction)+'_zone.py',location)    
+        write_zcfd_zones('wind-'+str(wind_direction)+'_zone.py',location)
     pass
 
-    
+
 def create_zcfd_input(array_data_file, farm_centre):
     # Read file
-    
+
     array_data = {}
-    
+
     with open(array_data_file,"r") as f:
         s = f.read()
         array_data = ast.literal_eval(s)
-    
+
     # Cases
     cases = array_data['Cases']
-    
+
     for (key,value) in cases.items():
         #print key
 
         # Wind direction
         wind_direction = key
-        
+
         # Wind Speed
         wind_speed = value['Windspeed']
 
         density = value['AirDensity']
-    
+
         # Turbines
         turbines = array_data['Turbines']
-        
+
         # List of tuples
         location = []
-        
+
         for (key,value) in turbines.items():
             #print key
             name = key
             if isinstance(key,int):
-                name = 'A'+str(key)            
+                name = 'A'+str(key)
             # Location as a tuple
             turbine_location = (value['X'],value['Y'],float(value['Z']))
-            
+
             # Convert to local coordinates
             turbine_location = convert_to_local_coordinates(turbine_location,farm_centre)
-            
+
             # Compute new location
             turbine_location = get_turbine_location(turbine_location,wind_direction)
-            
+
             # Thrust Coefficient
             tc = value['ThrustCoEfficient']
             try:
                 thrust_coefficient = float(value['ThrustCoEfficient'][-1])
             except:
                  thrust_coefficient = float(value['ThrustCoEfficient'])
-            
+
             turbine_diameter = float(value['RotorDiameter'])
 
             location.append((name,wind_direction,turbine_location,turbine_diameter,thrust_coefficient))
-            
+
         # Write zone definition
         write_zcfd_zones('wind-'+str(wind_direction)+'_zone.py',location)
-            
+
     pass
 
 def write_zcfd_zones(zcfd_file_name,location):
-    
+
     with open(zcfd_file_name,'w') as f:
         for idx,val in enumerate(location):
             f.write('\'FZ_'+str(idx+1)+'\':{\n')
@@ -258,46 +284,48 @@ def write_zcfd_zones(zcfd_file_name,location):
             f.write('\'outer radius\':'+str(val[3]/2.0)+',\n')
             f.write('},\n')
     pass
-    
-def generate_turbine_region(turbine_name,turbine_location,turbine_diameter,wind_direction,rotate=False):
-    
+
+def generate_turbine_region(turbine_name, turbine_location, 
+                            turbine_diameter, wind_direction, 
+                            turbine_factor=2.0, rotate=False):
+
     cylinder = Cylinder()
     cylinder.Radius = 0.5*turbine_diameter
     cylinder.Resolution = 128
-    cylinder.Height = 2.0*turbine_diameter
-    
+    cylinder.Height = turbine_factor*turbine_diameter
+
     transform = Transform()
     transform.Transform = "Transform"
     transform.Transform.Rotate = [0.0,0.0,90.0]
     if rotate:
         transform.Transform.Rotate = [0.0,0.0,-wind_direction]
     transform.Transform.Translate = [turbine_location[0],turbine_location[1],turbine_location[2]]
-    
+
     writer = CreateWriter(turbine_name+'-'+str(wind_direction)+'.vtp')
     writer.Input = transform
     writer.UpdatePipeline()
 
 def generate_turbine(turbine_name,turbine_location,turbine_diameter,wind_direction,rotate=False):
-    
+
     disk = Disk()
     disk.InnerRadius = 0.05*0.5*turbine_diameter
     disk.OuterRadius = 0.5*turbine_diameter
     disk.CircumferentialResolution = 128
     disk.RadialResolution = 12
-    
+
     transform = Transform()
     transform.Transform = "Transform"
     transform.Transform.Rotate = [0.0,90.0,0.0]
     if rotate:
         transform.Transform.Rotate = [0.0,90.0,90.0-wind_direction]
     transform.Transform.Translate = [turbine_location[0],turbine_location[1],turbine_location[2]]
-    
+
     writer = CreateWriter(turbine_name+'-'+str(wind_direction)+'-disk.vtp')
     writer.Input = transform
     writer.UpdatePipeline()
 
 def write_control_file(control_file_name):
-    
+
     with open(control_file_name,'w') as f:
         f.write('domain:  -50000 50000 -50000 50000 0 1000.0'+'\n')
         f.write('initial: 5000.0'+'\n')
@@ -305,13 +333,13 @@ def write_control_file(control_file_name):
         f.write('generateLayer: false'+'\n')
 
 def create_source(turbine_location, diameter):
-    
+
     upstream_factor = 1.0
     downstream_factor = 4.0
     radial_factor = 1.0
     diameter_mesh_pts = 50.0
     radius_factor = 2.0
-    
+
     # Upstream
     pt_1 = turbine_location[0] - upstream_factor*diameter
     # Downstream
@@ -320,14 +348,14 @@ def create_source(turbine_location, diameter):
     radius = 0.5*diameter*radial_factor
     # Mesh size
     mesh_size = diameter/diameter_mesh_pts
-    
+
     return ((pt_1,turbine_location[1],turbine_location[2],mesh_size,radius,radius*radius_factor),
             (pt_2,turbine_location[1],turbine_location[2],mesh_size,radius,radius*radius_factor))
-        
+
 def write_solar_bac(bac_file_name,wind_direction,mesh_source):
-    
+
     farfield_mesh_size = 5000.0
-    
+
     with open(bac_file_name,'w') as f:
         f.write('zCFD Farmer - wind direction: '+str(wind_direction)+'\n')
         f.write(' 8 6'+'\n')
@@ -380,27 +408,27 @@ def write_solar_bac(bac_file_name,wind_direction,mesh_source):
             f.write( ' '.join( str(elem) for elem in pt_1) +'\n' )
             f.write( ' '.join( str(elem) for elem in pt_2) +'\n')
         f.write(' The triangles'+'\n')
-        
+
 
 
 def convert_to_local_coordinates(turbine_location, farm_centre):
     # Converts location from Eastings and Northings into local coordinates
-    # 
-    
+    #
+
     local_coordinates = (turbine_location[0] - farm_centre[0],
                          turbine_location[1] - farm_centre[1],
                          turbine_location[2])
     return local_coordinates
 
 def get_turbine_location(current_location, wind_direction):
-    # Assume that the CFD solver expects freestream flow in x-direction 
-    # Rotate farm about its centre to account for the actual wind direction 
+    # Assume that the CFD solver expects freestream flow in x-direction
+    # Rotate farm about its centre to account for the actual wind direction
     # i.e. if the wind is coming from the West (270 degrees), then there is no rotation.
-    # In general: rotate wind farm in standard co-ordinate geometry sense 
+    # In general: rotate wind farm in standard co-ordinate geometry sense
     # about centre by (wind direction + 90 degrees)
     rotation_angle = (wind_direction + 90.0)
     rotation_angle = math.radians(rotation_angle)
-    
+
     x_temp = current_location[0]
     y_temp = current_location[1]
     new_x_temp = ( x_temp*math.cos(rotation_angle)
@@ -446,7 +474,7 @@ def write_windfarmer_data(case_name, num_processes, up):
     # Step 1: Read the case file parameters
     __import__(case_name)
     case_data = getattr(sys.modules[case_name], 'parameters')
-    
+
     # Step 2: Determine the (conventional) wind direction from the case inflow parameters
     v = case_data['IC_1']['V']['vector']
     print 'farm.py : write_windfarmer_data : v = ' + str(v)
@@ -463,11 +491,11 @@ def write_windfarmer_data(case_name, num_processes, up):
     print 'farm.py : write_windfarmer_data : windfarmer_filename = ' + windfarmer_filename
     report_file_name = case_name+'_report.csv'
     report_array = np.genfromtxt(report_file_name, dtype=None)
-    
+
     # Step 4: Calculate the ground heights at the probe locations by subtracting the local height of the wall
     reader = OpenDataFile('./' + case_name + '_P' + str(num_processes) + '_OUTPUT/' + case_name +'_wall.pvd')
     local_surface = servermanager.Fetch(reader)
-    
+
     # Step 5: Loop over the probe locations plus the results to create the Windfarmer file.
     with open(windfarmer_filename,'w') as f:
         f.write('"Point","X[m]","Y [m]","Z ground [m]","Z hub [m]","H [m]","D [m]","Theta[Deg]","TI hub","TI upper",' +
@@ -477,7 +505,7 @@ def write_windfarmer_data(case_name, num_processes, up):
         for probe in case_data['report']['monitor']:
             point =  case_data['report']['monitor'][probe]['point']
             name = case_data['report']['monitor'][probe]['name']
-                            
+
             # Step 5.1: Find the report data for the windfarmer probe if it exists.
             V_x = report_data_reader(name+'_V_x', report_array[0], report_array[len(report_array)-1])
             V_y = report_data_reader(name+'_V_y', report_array[0], report_array[len(report_array)-1])
@@ -490,7 +518,7 @@ def write_windfarmer_data(case_name, num_processes, up):
             if (Theta_hub > 360.0):
                 Theta_hub -= 360.0
             Local_Elevation_Angle = np.angle(complex(VXY_hub, V_z), deg=True)
-                                                                
+
             # Step 5.2: Swap the axes if necessary to match the Windfarmer default (z-axis is up)
             if (up[0] == 0):
                 x = point[0]
@@ -504,14 +532,14 @@ def write_windfarmer_data(case_name, num_processes, up):
                 x = point[1]
                 y = point[2]
                 z = point[0]
-                                                                                                                
+
             # Step 5.3: Find the closest ground point to the probe to work out elevation
             min_dist=1.0e16
             closest_point = [min_dist, min_dist, min_dist]
             post.for_each(local_surface, closest_point_func, s=[x,y,z])
             zground = up[0]*closest_point[0] + up[1]*closest_point[1] + up[2]*closest_point[2]
             zhub = up[0]*x + up[1]*y + up[2]*z
-                
+
             # Step 5.4: Output the Windfarmer data
             f.write(name + "," + str(x) + "," + str(y) + "," + str(zground) + "," + str(zhub) + "," +
             str(zhub-zground) + "," + "," + str(angle) + "," + str(TI_hub) + ",,,,,," + str(VXY_hub) + ",,,,," +
@@ -566,22 +594,26 @@ def create_trbx_zcfd_input(case_name = 'windfarm',
                     name = location[0]
                     easting = location[1]
                     northing = location[2]
-                                                                  
+
                     # Step 2: Work out the local elevation
                     min_dist=1.0e16
                     closest_point = [min_dist, min_dist, min_dist]
                     post.for_each(local_surface, closest_point_func, s=[easting,northing,0.0])
                     height = closest_point[2]
                     hub_z = height+float(turbine_dict['SelectedHeight'])
-                                                                  
+
                     # Step 3: Generate the turbine region files (./turbine_vtp/*.vtp)
+                    rd = float(turbine_dict['RotorDiameter'])
+                    pref_offset = rd
+                    
                     generate_turbine_region('./turbine_vtp/'+name,
                                             [easting, northing, hub_z],
                                             float(turbine_dict['RotorDiameter']),
-                                            wind_direction)
-                                                                  
+                                            wind_direction,
+                                            2.5*pref_offset/rd,
+                                            True)
+
                     # Step 4: Generate the turbine zone definition (./turbine_zone.py)
-                    rd = float(turbine_dict['RotorDiameter'])
                     tz.write('\'FZ_'+str(idx)+'\':{\n')
                     tz.write('\'type\':\'disc\',\n')
                     tz.write('\'def\':\'./turbine_vtp/'+name+'-'+str(wind_direction)+'.vtp\',\n')
@@ -614,11 +646,12 @@ def create_trbx_zcfd_input(case_name = 'windfarm',
                     tz.write('\'normal\':['+str(-wv[0])+','+str(-wv[1])+','+str(-wv[2])+'],\n')
                     tz.write('\'inner radius\':'+str(float(turbine_dict['DiskDiameter'])/2.0)+',\n')
                     tz.write('\'outer radius\':'+str(float(turbine_dict['RotorDiameter'])/2.0)+',\n')
-                    pref_offset = rd
+                    
                     pref = [easting - pref_offset*wv[0], northing - pref_offset*wv[1], hub_z - pref_offset*wv[2]]
+                    tz.write('\'reference plane\':\'true\',\n')
                     tz.write('\'reference point\':['+str(pref[0])+','+str(pref[1])+','+str(pref[2])+'],\n')
                     tz.write('},\n')
-                                                                  
+
                     # Step 5: Generate the turbine monitor probes (./turbine_probe.py)
                     # Turbines:    label@MHH@## (## = hub height of the turbine relative to the ground in meters)
                     # Anemometers: label@AN@##  (## = height of the anemometer above the ground in meters)
@@ -629,3 +662,38 @@ def create_trbx_zcfd_input(case_name = 'windfarm',
                     tp.write('        },\n')
             tp.write('},\n  },\n } \n')
         tz.write('}\n')
+
+def extract_probe_data(case_name = 'windfarm',
+                       wind_direction_start = 0,
+                       wind_direction_end = 360,
+                       wind_direction_step = 10,
+                       num_processes = 16,
+                       probe_location_file = 'name_x_y_z.txt',
+                       offset = 0.0,
+                       **kwargs):
+    import vtk
+    from vtk.util import numpy_support as VN
+    probe_location_array = np.genfromtxt(probe_location_file, dtype=None)
+    for wd in range (wind_direction_start, wind_direction_end, wind_direction_step):
+        directory = case_name+'_'+str(int(wd))+'_P'+str(num_processes)+'_OUTPUT'
+        filename = case_name+'_'+str(int(wd))+'.pvd'
+        reader = OpenDataFile('./' + directory + '/' + filename)
+        local_volume = servermanager.Fetch(reader)
+        for location in probe_location_array:
+            name = location[0]
+            easting = location[1]
+            northing = location[2]
+            height = location[3]+offset
+            probe = vtk.vtkProbeFilter()
+            point = vtk.vtkPointSource()
+            point.SetNumberOfPoints(1)
+            point.SetCenter([easting,northing,height])
+            probe.SetInputConnection(point.GetOutputPort())
+            probe.SetSourceData(local_volume)
+            probe.Update()
+            V=VN.vtk_to_numpy(probe.GetOutput().GetPointData().GetArray('V'))
+            ti=VN.vtk_to_numpy(probe.GetOutput().GetPointData().GetArray('ti'))
+            print str(wd) + ' ' +name+'_zoffset_'+str(offset)+'_V_x ' + str(V[0][0])
+            print str(wd) + ' ' +name+'_zoffset_'+str(offset)+'_V_y ' + str(V[0][1])
+            print str(wd) + ' ' +name+'_zoffset_'+str(offset)+'_V_z ' + str(V[0][2])
+            print str(wd) + ' ' +name+'_zoffset_'+str(offset)+'_ti ' + str(ti[0]+0.1)

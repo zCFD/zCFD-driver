@@ -8,10 +8,20 @@ batch = False
 if 'BATCH_ANALYSIS' in os.environ:
     batch = True
 
+from matplotlib.rcsetup import all_backends
+
 if batch:
-    matplotlib.use('Agg')
+    if 'Agg' in all_backends:
+        matplotlib.use('Agg')
+    else:
+        matplotlib.use('agg')
 else:
-    matplotlib.use('nbagg')
+    if 'nbagg' in all_backends:
+        matplotlib.use('nbagg')
+    else:
+        matplotlib.use('nbAgg')
+
+matplotlib.rcParams['backend_fallback'] = False
 
 from matplotlib import pylab, mlab, pyplot
 plt = pyplot
@@ -28,4 +38,7 @@ paraview.simple._DisableFirstRenderCameraReset()
 
 import font as ft
 import colour as cl
+
+from plot_report import Report
+
 

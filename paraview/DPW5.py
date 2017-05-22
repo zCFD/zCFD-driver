@@ -1,5 +1,5 @@
 """
-Copyright (c) 2012, Zenotech Ltd
+Copyright (c) 2012-2017, Zenotech Ltd
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,7 @@ except: from paraview.simple import *
 paraview.simple._DisableFirstRenderCameraReset()
 
 import math
+from zutil import rotate_vector
 
 alpha = 0.0
 beta  = 0.0
@@ -37,23 +38,10 @@ reference_area = 1.0
 #face_area = 0.075823
 
 
-def rotate_vector(vec,alpha_degree,beta_degree):
-    """
-    Rotate vector by alpha and beta based on ESDU definition
-    """
-    alpha = math.radians(alpha_degree)
-    beta = math.radians(beta_degree)
-    rot = [0.0,0.0,0.0]
-    rot[0] =  math.cos(alpha)*math.cos(beta)*vec[0] + math.sin(beta)*vec[1]  + math.sin(alpha)*math.cos(beta)*vec[2]
-    rot[1] = -math.cos(alpha)*math.sin(beta)*vec[0] + math.cos(beta)*vec[1]  - math.sin(alpha)*math.sin(beta)*vec[2]
-    rot[2] = -math.sin(alpha)*               vec[0]                          + math.cos(alpha)*               vec[2]
-    return rot
-
-
 def get_chord(slice):
-    
+
     Calculator1 = Calculator(Input=slice)
-    
+
     Calculator1.AttributeMode = 'point_data'
     Calculator1.Function = 'coords.iHat'
     Calculator1.ResultArrayName = 'xpos'
@@ -62,44 +50,44 @@ def get_chord(slice):
     xmin = MinMax(Input=Calculator1)
     xmin.Operation = "MIN"
     xmin.UpdatePipeline()
-    
+
     xmin_client = servermanager.Fetch(xmin)
-    
+
     min_pos = xmin_client.GetPointData().GetArray("xpos").GetValue(0)
-    
+
     xmax = MinMax(Input=Calculator1)
     xmax.Operation = "MAX"
     xmax.UpdatePipeline()
-    
+
     xmax_client = servermanager.Fetch(xmax)
-    
+
     max_pos  = xmax_client.GetPointData().GetArray("xpos").GetValue(0)
 
     Delete(xmin);
-    Delete(xmax);    
+    Delete(xmax);
     Delete(Calculator1);
-    
+
     return [min_pos,max_pos]
-    
+
 
 def plot_cp_profile(label,colour,file_root):
-    
+
     wall = PVDReader( FileName=file_root+'_WALL.pvd' )
 
     CellDatatoPointData1 = CellDatatoPointData(Input=wall)
     CellDatatoPointData1.PassCellData = 1
-    
+
     wall_slice = Slice(Input=CellDatatoPointData1, SliceType="Plane" )
-    
+
     wall_slice.SliceType.Normal = [0.0,1.0,0.0]
     wall_slice.SliceType.Origin = [0.0, -0.5, 0.0]
-    
+
     wall_slice.UpdatePipeline()
-    
+
     offset = get_chord(wall_slice)
-    
+
     Calculator1 = Calculator(Input=wall_slice)
-    
+
     Calculator1.AttributeMode = 'point_data'
     Calculator1.Function = '(coords.iHat - '+str(offset[0])+')/'+str(offset[1]-offset[0])
     Calculator1.ResultArrayName = 'chord'
@@ -108,17 +96,17 @@ def plot_cp_profile(label,colour,file_root):
     sum.UpdatePipeline()
     sum.Operation = "SUM"
 
-    sum_client = servermanager.Fetch(sum)    
+    sum_client = servermanager.Fetch(sum)
     pforce = sum_client.GetCellData().GetArray("pressureforce").GetTuple(0)
     fforce = sum_client.GetCellData().GetArray("frictionforce").GetTuple(0)
     #yplus = wall_slice_client.GetCellData().GetArray("yplus").GetValue(0)
-    
+
     pforce = rotate_vector(pforce,alpha,beta)
     fforce = rotate_vector(fforce,alpha,beta)
-    
+
     PlotOnSortedLines1 = PlotOnSortedLines(Input=Calculator1)
     PlotOnSortedLines1.UpdatePipeline()
-    
+
     SetActiveSource(PlotOnSortedLines1)
 
     DataRepresentation3 = Show()
@@ -139,11 +127,11 @@ def plot_cp_profile(label,colour,file_root):
     #    if i%2 == 0:
     #        my_representation0.SeriesVisibility = [ s, '0' ]
     #        print s
-    #    i+=1   
+    #    i+=1
     #my_representation0.SeriesVisibility = ['cp', '1']
-    
+
     #my_representation0.UpdatePipeline()
-    
+
     my_view0 = GetRenderView()
     my_view0.ChartTitle = 'NACA0012 alpha='+ ('%.1f ' % alpha) + ('Cd=%.4f Cl=%.4f' % (pforce[0]+fforce[0],pforce[2]+fforce[2]))
     my_view0.ChartTitleFont = ['Arial', '24', '1', '0']
@@ -155,13 +143,13 @@ def plot_cp_profile(label,colour,file_root):
 
 def plot_experiment(filename):
     experiment = CSVReader( FileName=['/Users/jamil/Documents/ZenoTech/zCFD_DATA/NACA0012/'+filename] )
-    
+
     experiment.MergeConsecutiveDelimiters = 0
     experiment.FieldDelimiterCharacters = ' '
     experiment.HaveHeaders = 0
-        
+
     SetActiveSource(experiment)
-    
+
     DataRepresentation2 = Show()
     DataRepresentation2.XArrayName = 'Field 0'
     #DataRepresentation2.SeriesColor = ['Field 0', '0', '0', '0', 'Field 1', '0.894118', '0.101961', '0.109804', 'Field 2', '0.215686', '0.494118', '0.721569', 'Field 3', '0.301961', '0.686275', '0.290196', 'Field 4', '0.596078', '0.305882', '0.639216', 'vtkOriginalIndices', '1', '0.498039', '0']
@@ -172,7 +160,7 @@ def plot_experiment(filename):
     DataRepresentation2.SeriesLabel = ['Field 1', 'Gregory Re=3m free transition']
     DataRepresentation2.SeriesColor = ['Field 1', '0.7','0.7' ,'0.7' ]
 
- 
+
 
 
 # Create a line chart and plot data

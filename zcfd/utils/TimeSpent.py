@@ -26,6 +26,7 @@ THE SOFTWARE.
 from __future__ import division
 import time
 
+
 class Stopwatch(object):
     """
     The Stopwatch class provides a timer that can be started and stopped
@@ -44,20 +45,20 @@ class Stopwatch(object):
 
     def start(self):
         if self.isRunning():
-            return # calling 'start' on a running Stopwatch has no effect
+            return  # calling 'start' on a running Stopwatch has no effect
         self.startTime = time.time()
         self.count += 1
 
     def stop(self):
         self.elapsedMillis = self.getElapsedMillis()
-        self.startTime = None # indicates that it isn't running
+        self.startTime = None  # indicates that it isn't running
 
     def isRunning(self):
         return (self.startTime is not None)
 
     def getElapsedMillis(self):
         elapsedMillis = self.elapsedMillis
-        if self.startTime is not None: # it's running
+        if self.startTime is not None:  # it's running
             elapsedMillis += ((time.time() - self.startTime) * 1000)
         return elapsedMillis
 
@@ -66,6 +67,7 @@ class Stopwatch(object):
             return 0.0
         return self.getElapsedMillis() / self.count
 # -----------------------------------------------------------------------------
+
 
 class TimeSpent(object):
     """
@@ -115,7 +117,7 @@ class TimeSpent(object):
         return TimeSpent._globalInstance
 
     def __init__(self):
-        self.stopwatches = dict() # indexed by name
+        self.stopwatches = dict()  # indexed by name
         self.reportStopwatch = Stopwatch()
         self.reportStopwatch.start()
 

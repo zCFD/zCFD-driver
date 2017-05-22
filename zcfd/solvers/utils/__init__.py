@@ -3,8 +3,8 @@
 from RungeKutta import FourStageRungeKutta
 from RungeKutta import FiveStageRungeKutta
 from RungeKutta import SingleStageRungeKutta
-from RungeKutta import FiveStageRungeKuttaSSP
-from RungeKutta import FourStageRungeKuttaSSP
+from RungeKutta import ThreeStageThirdOrderTVDRungeKutta
+
 
 def getRungeKutta(name):
     """
@@ -14,11 +14,7 @@ def getRungeKutta(name):
         return FourStageRungeKutta()
     elif name == 'euler' or name == 1:
         return SingleStageRungeKutta()
-    elif name == 'rk ssp':
-        return FiveStageRungeKuttaSSP()
-    elif name == 'rk ssp 4':
-        return FourStageRungeKuttaSSP()
+    elif name == 'rk third order tvd':
+        return ThreeStageThirdOrderTVDRungeKutta()
     else:
         return FiveStageRungeKutta()
-    
-    

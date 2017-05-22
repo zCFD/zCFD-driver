@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    * Neither the name of the <organization> nor the
+    * Neither the name of Zenotech Ltd nor the
       names of its contributors may be used to endorse or promote products
       derived from this software without specific prior written permission.
 
@@ -26,7 +26,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 import os
 import sys
-import os.path, pkgutil
+import os.path
+import pkgutil
 import time
 import json
 import datetime
@@ -35,6 +36,7 @@ import datetime
 #import logging.config
 
 from mpi4py import rc
+from argparse import _StoreFalseAction
 rc.initialize = False
 if 'ZCFD_TRACE' in os.environ:
     rc.profile('vt-mpi', logfile='zcfd')
@@ -42,9 +44,9 @@ if 'ZCFD_TRACE' in os.environ:
 from mpi4py import MPI
 from colorama import Fore, Back, Style
 
-#try:
+# try:
 #    import pycuda.autoinit
-#except:
+# except:
 #    """"""
 
 import yaml
@@ -62,6 +64,7 @@ from zcfd.utils import md5sum
 
 class zCFDSolver:
     """Worlds Fastest CFD Solver"""
+
     def main(self):
         MPI.Init_thread(MPI.THREAD_SERIALIZED)
         if MPI.Query_thread() != MPI.THREAD_SERIALIZED:
@@ -74,11 +77,10 @@ class zCFDSolver:
         self.show_banner()
         self.list_solvers()
         self.init_defaults()
-        if self.read_controlfile():
-            if self.load_solver():
-                self.initialise_solver()
-                self.start_solver()
-        #self.terminate()
+        if self.read_controlfile() and self.load_solver():
+            self.initialise_solver()
+            self.start_solver()
+        # self.terminate()
 
     def __del__(self):
         self.terminate()
@@ -86,55 +88,58 @@ class zCFDSolver:
     def show_banner(self):
         # Show copyright banner
         # Show product banner (see http://patorjk.com/software/taag/)
-        config.logger.info(Fore.BLUE+r"     _______________________/\\\\\\\\\___/\\\\\\\\\\\\\\\___/\\\\\\\\\\\\____"+"\n"+
-                           r"      ____________________/\\\////////___\/\\\///////////___\/\\\////////\\\__"+"\n"+
-                           r"       __________________/\\\/____________\/\\\______________\/\\\______\//\\\_"+"\n"+
-                           r"        __/\\\\\\\\\\\___/\\\______________\/\\\\\\\\\\\______\/\\\_______\/\\\_"+"\n"+
-                           r"         _\///////\\\/___\/\\\______________\/\\\///////_______\/\\\_______\/\\\_"+"\n"+
-                           r"          ______/\\\/_____\//\\\_____________\/\\\______________\/\\\_______\/\\\_"+"\n"+
-                           r"           ____/\\\/________\///\\\___________\/\\\______________\/\\\_______/\\\__"+"\n"+
-                           r"            __/\\\\\\\\\\\_____\////\\\\\\\\\__\/\\\______________\/\\\\\\\\\\\\/___"+"\n"+
-                           r"             _\///////////_________\/////////___\///_______________\////////////_____"+"\n\n"+Fore.RESET)
-        config.logger.info(Fore.BLUE+r"            _____                  ______           __       ____                 __            __ "+"\n"+
-                           r"  ____ _   /__  /  ___  ____  ____/_  __/___  _____/ /_     / __ \_________  ____/ /__  _______/ /_"+"\n"+
-                           r" / __ `/     / /  / _ \/ __ \/ __ \/ /  / _ \/ ___/ __ \   / /_/ / ___/ __ \/ __  // / / / ___/ __/"+"\n"+
-                           r"/ /_/ /     / /__/  __/ / / / /_/ / /  /  __/ /__/ / / /  / ____/ /  / /_/ / /_/ // /_/ / /__/ /_  "+"\n"+
-                           r"\__,_/     /____/\___/_/ /_/\____/_/   \___/\___/_/ /_/  /_/   /_/   \____/\__,_/ \__,_/\___/\__/  "+Fore.RESET)
+        config.logger.info(Fore.BLUE + r"     _______________________/\\\\\\\\\___/\\\\\\\\\\\\\\\___/\\\\\\\\\\\\____" + "\n" +
+                           r"      ____________________/\\\////////___\/\\\///////////___\/\\\////////\\\__" + "\n" +
+                           r"       __________________/\\\/____________\/\\\______________\/\\\______\//\\\_" + "\n" +
+                           r"        __/\\\\\\\\\\\___/\\\______________\/\\\\\\\\\\\______\/\\\_______\/\\\_" + "\n" +
+                           r"         _\///////\\\/___\/\\\______________\/\\\///////_______\/\\\_______\/\\\_" + "\n" +
+                           r"          ______/\\\/_____\//\\\_____________\/\\\______________\/\\\_______\/\\\_" + "\n" +
+                           r"           ____/\\\/________\///\\\___________\/\\\______________\/\\\_______/\\\__" + "\n" +
+                           r"            __/\\\\\\\\\\\_____\////\\\\\\\\\__\/\\\______________\/\\\\\\\\\\\\/___" + "\n" +
+                           r"             _\///////////_________\/////////___\///_______________\////////////_____" + "\n\n" + Fore.RESET)
+        config.logger.info(Fore.BLUE + r"            _____                  ______           __       ____                 __            __ " + "\n" +
+                           r"  ____ _   /__  /  ___  ____  ____/_  __/___  _____/ /_     / __ \_________  ____/ /__  _______/ /_" + "\n" +
+                           r" / __ `/     / /  / _ \/ __ \/ __ \/ /  / _ \/ ___/ __ \   / /_/ / ___/ __ \/ __  // / / / ___/ __/" + "\n" +
+                           r"/ /_/ /     / /__/  __/ / / / /_/ / /  /  __/ /__/ / / /  / ____/ /  / /_/ / /_/ // /_/ / /__/ /_  " + "\n" +
+                           r"\__,_/     /____/\___/_/ /_/\____/_/   \___/\___/_/ /_/  /_/   /_/   \____/\__,_/ \__,_/\___/\__/  " + Fore.RESET)
 
     def init_messageq(self):
-        # TODO For multinode parallel runs need to specify IP address of master here
+        # TODO For multinode parallel runs need to specify IP address of master
+        # here
         if config.options.mq:
             import zMQ
             from zMessage import Message
-            print('Connecting to Message Q at',"localhost",4001)
-            config.zmq = zMQ.Connector('localhost',4001)
-            config.zmq.run() # non blocking
+            print('Connecting to Message Q at', "localhost", 4001)
+            config.zmq = zMQ.Connector('localhost', 4001)
+            config.zmq.run()  # non blocking
             found = False
             while not found:  # Wait until a configuration file has been sent
-                item = config.zmq.q.get() # This blocks if the queue is empty
+                item = config.zmq.q.get()  # This blocks if the queue is empty
                 if Message.is_config(item):
                     found = True
                     config.parameters = yaml.load(Message.get_config(item))
                     if 'problem_name' in config.parameters:
-                        config.options.problem_name = config.parameters['problem_name']
+                        config.options.problem_name = config.parameters[
+                            'problem_name']
                     if 'case_name' in config.parameters:
-                        config.options.case_name = config.parameters['case_name']
+                        config.options.case_name = config.parameters[
+                            'case_name']
                     if 'solver' in config.parameters:
                         config.options.solver = config.parameters['solver']
-                    config.controlfile = os.path.abspath(config.options.case_name+".ctl.yaml")
+                    config.controlfile = os.path.abspath(
+                        config.options.case_name + ".ctl.yaml")
                     Parameters.Parameters().write_yaml()
                 config.zmq.q.task_done()
 
-    #def start_message(self):
+    # def start_message(self):
 
     def terminate(self):
-        #time.sleep(1)
-        #MPI.finalize()
+        # time.sleep(1)
+        # MPI.finalize()
         if config.zmq != 0:
             config.zmq.stop()
             config.zmq.ts.join()
         MPI.Finalize()
-
 
     def message_wait(self):
         if config.options.mq:
@@ -150,36 +155,44 @@ class zCFDSolver:
         rank = MPI.COMM_WORLD.Get_rank()
         nparts = MPI.COMM_WORLD.Get_size()
 
-        directory = str(config.options.case_name)+"_P"+str(nparts)+"_OUTPUT"
+        directory = str(config.options.case_name) + \
+            "_P" + str(nparts) + "_OUTPUT"
+        
+        log_path = directory + '/LOGGING'
 
         config.output_dir = directory
 
         if rank == 0:
             self.ensure_dir(directory)
-            
+            self.ensure_dir(log_path)
+
+            vis_path = directory + '/VISUALISATION'
+            self.ensure_dir(vis_path)
+
             import libzCFDVersion as zversion
-            
+
             # initialise status file
-            with open(str(config.options.case_name)+'_status.txt','w') as f:
-                json.dump({'num processor' : nparts,
-                           'case' : config.options.case_name,
-                           'problem' : config.options.problem_name,
-                           'version' : zversion.get_project_version(),
-                           'date' :  datetime.datetime.now().strftime("%H:%M:%S %d-%m-%Y"),
-                           'case md5' : md5sum(config.options.case_name + '.py'),
+            with open(str(config.options.case_name) + '_status.txt', 'w') as f:
+                json.dump({'num processor': nparts,
+                           'case': config.options.case_name,
+                           'problem': config.options.problem_name,
+                           'version': zversion.get_project_version(),
+                           'date':  datetime.datetime.now().strftime("%H:%M:%S %d-%m-%Y"),
+                           'case md5': md5sum(config.options.case_name + '.py'),
                            },
-                          f,indent=4)
+                          f, indent=4)
 
         MPI.COMM_WORLD.Barrier()
 
-        config.logger = Logger.Logger(rank,filename=directory+"/"+config.options.case_name+"."+str(rank)+".log",connector=config.zmq)
+        config.logger = Logger.Logger(rank, filename=os.path.join(
+            log_path, config.options.case_name + "." + str(rank) + ".log"), connector=config.zmq)
 
         #config.logger = libzCFDLogger.getLogger()
         #fh = libzCFDLogger.FileLogger(config.problem_name+"."+str(rank)+".log");
-        #config.logger.addHandler(fh)
+        # config.logger.addHandler(fh)
 
         #config.filelogger = fh
-        #if rank == 0:
+        # if rank == 0:
         #    ch = libzCFDLogger.StdOutLogger()
         #    config.logger.addHandler(ch)
         #    config.streamlogger = ch
@@ -217,75 +230,88 @@ class zCFDSolver:
     def list_solvers(self):
         config.logger.debug("Listing available Solvers")
         pkgpath = os.path.dirname(solvers.__file__)
-        config.solver_names =  [name for _, name, _ in pkgutil.iter_modules([pkgpath])]
-        config.logger.info("Solvers Available: "+", ".join(map(str, config.solver_names)))
-        #print names
+        config.solver_names = [name for _, name,
+                               _ in pkgutil.iter_modules([pkgpath])]
+        config.logger.info("Solvers Available: " +
+                           ", ".join(map(str, config.solver_names)))
+        # print names
 
     def read_commandline(self):
         #config.logger.debug("Reading commandline")
         options = commandline.ZOption()
         config.options = options.parse()
+
+        case_filename = None
+        problem_filename = None
+
         # Remove .py extension from case name
         if config.options.case_name.endswith('.py') or config.options.case_name.endswith('.h5'):
+            case_filename = config.options.case_name
             config.options.case_name = config.options.case_name[:-3]
-        if config.options.problem_name.endswith('.h5'):
-            config.options.problem_name = config.options.problem_name[:-3]
+        else:
+            case_filename = config.options.case_name + '.py'
 
+        if config.options.problem_name.endswith('.h5'):
+            problem_filename = config.options.problem_name
+            config.options.problem_name = config.options.problem_name[:-3]
+        else:
+            problem_filename = config.options.problem_name + '.h5'
+
+        # Check if files exist
+        ok = True
+        if not os.path.isfile(case_filename):
+            ok = False
+            if MPI.COMM_WORLD.Get_rank() == 0:
+                print(" Control file: %s not found" % (case_filename))
+        if not os.path.isfile(problem_filename):
+            ok = False
+            if MPI.COMM_WORLD.Get_rank() == 0:
+                print(" Mesh file: %s not found" % (problem_filename))
+        MPI.COMM_WORLD.Barrier()
+        if not ok:
+            self.terminate()
 
     def read_controlfile(self):
         config.logger.debug("Reading controlfile")
-        cfilename = config.options.case_name;
-        if cfilename == "NOT-DEFINED":
-            cfilename = config.options.problem_name;
-        #cfilename += ".ctl.yaml";
-        config.controlfile = os.path.abspath(cfilename)+".py"
+        cfilename = config.options.case_name
+        if cfilename is None:
+            cfilename = config.options.problem_name
+        config.controlfile = os.path.abspath(cfilename) + ".py"
         if os.path.isfile(config.controlfile):
-            config.logger.info("Control file: "+config.controlfile)
+            config.logger.info("Control file: " + config.controlfile)
             p = Parameters.Parameters()
             p.read(cfilename)
-            #p.read_yaml()
-            #p.create_native()
             return True
         else:
             config.logger.info("Creating missing control file with defaults")
-            #Parameters.Parameters().write_yaml()
             Parameters.Parameters().write(config.controlfile)
-            config.logger.error("Control file: "+config.controlfile+" not found")
+            config.logger.error("Control file: " +
+                                config.controlfile + " not found")
             return False
-
 
     def load_solver(self):
         config.logger.debug("Loading Solver")
         equations = config.parameters['equations']
 
-        solver_name = 'NONE'
+        solver_name_map = {
+            'euler': 'EulerSolver',
+            'viscous': 'ViscousSolver',
+            'RANS': 'MenterSSTSolver',
+            'LES': 'ViscousSolver',
+            'DGeuler': 'DGExplicitSolver',
+            'DGviscous': 'DGExplicitSolver',
+            'DGLES': 'DGExplicitSolver',
+            'DGMenterDES': 'DGExplicitSolver',
+            'DGRANS': 'DGExplicitSolver'
+        }
+        solver_name = solver_name_map.get(equations, None)
 
-        if equations == 'euler':
-            solver_name = 'EulerSolver'
-        if equations == 'viscous':
-            solver_name = 'ViscousSolver'
-        if equations == 'RANS':
-            solver_name = 'MenterSSTSolver'
-        if equations == 'LES':
-            solver_name = 'ViscousSolver'
-        if equations == 'DGeuler':
-            solver_name = 'DGEulerSolver'
-        if equations == 'DGviscous':
-            solver_name = 'DGViscousSolver'
-        if equations == 'DGLES':
-            solver_name = 'DGViscousSolver'
-	if equations == 'DGMenterDES':
-	    solver_name = 'DGViscousSolver'
-	if equations == 'DGRANS':
-	    solver_name = 'DGViscousSolver'
-
-        if config.solver_names.count(solver_name):
+        if solver_name and config.solver_names.count(solver_name):
             indx = config.solver_names.index(solver_name)
-            #print indx
-            solver = 'zcfd.solvers.'+config.solver_names[indx];
-            #print solver
+            solver = 'zcfd.solvers.' + config.solver_names[indx]
             __import__(solver)
-            config.solver = getattr(sys.modules[solver],config.solver_names[indx])(equations)
+            config.solver = getattr(
+                sys.modules[solver], config.solver_names[indx])(equations)
             return True
         else:
             config.logger.error("Failed to load solver")
@@ -297,21 +323,17 @@ class zCFDSolver:
         nparts = comm.Get_size()
         rank = comm.Get_rank()
         config.solver.initialise()
-        #reader = libzCFDIO.FluentReader()
-        #reader.set_filename("test")
 
     def start_solver(self):
         config.logger.debug("Starting Solver")
         config.solver.solve()
         config.logger.debug("Terminating Solver")
-        config.solver = 0;
+        config.solver = 0
 
-    def ensure_dir(self,d):
-        #d = os.path.dirname(f)
+    def ensure_dir(self, d):
         if not os.path.exists(d):
             os.makedirs(d)
 
 if __name__ == "__main__":
     zcfd = zCFDSolver()
     zcfd.main()
-

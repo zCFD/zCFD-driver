@@ -1,5 +1,5 @@
 """
-Copyright (c) 2012, Zenotech Ltd
+Copyright (c) 2012-2017, Zenotech Ltd
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -44,14 +44,14 @@ face_area = 0.075823
 
 def plot_profile(label,colour,file_root):
     wall = PVDReader( FileName=file_root+'_wall.pvd' )
-    
+
     wall_slice = Slice(Input=wall, SliceType="Plane" )
-    
+
     wall_slice.SliceType.Normal = [1.0,0.0,0.0]
     wall_slice.SliceType.Origin = [bl_position, 0.0, 0.0]
-    
+
     wall_slice.UpdatePipeline()
-    
+
     wall_slice_client = servermanager.Fetch(wall_slice)
     nu = wall_slice_client.GetCellData().GetArray("nu").GetValue(0)
     #nu = 1.4e-5
@@ -59,85 +59,85 @@ def plot_profile(label,colour,file_root):
     yplus = wall_slice_client.GetCellData().GetArray("yplus").GetValue(0)
     roughness = wall_slice_client.GetCellData().GetArray("roughness").GetValue(0)
     kplus = roughness*utau/nu
-    
+
     t = wall_slice_client.GetCellData().GetArray("T").GetValue(0)
     p = wall_slice_client.GetCellData().GetArray("p").GetValue(0)
     rho = wall_slice_client.GetCellData().GetArray("rho").GetValue(0)
-    
+
     wall_vel = wall_slice_client.GetCellData().GetArray("V").GetValue(0)
-    
+
     symmetry = PVDReader( FileName=file_root+'_symmetry.pvd' )
-    
+
     CellDatatoPointData1 = CellDatatoPointData(Input=symmetry)
     CellDatatoPointData1.PassCellData = 1
-    
+
     # Removes second symmetry plane keeping y max
     Clip1 = Clip(Input=CellDatatoPointData1, ClipType="Plane" )
     Clip1.ClipType.Normal = [0.0,1.0,0.0]
     Clip1.ClipType.Origin = [0.0, -0.5, 0.0]
-    
+
     Clip2 = Clip(Input=Clip1, ClipType="Plane" )
     Clip2.ClipType.Normal = [0.0,0.0,1.0]
     Clip2.ClipType.Origin = [0.0, 0.0, 0.05]
     Clip2.InsideOut = 1
-    
+
     Slice1 = Slice(Input=Clip2, SliceType="Plane" )
-    
+
     Slice1.SliceType.Normal = [1.0,0.0,0.0]
     Slice1.SliceType.Origin = [bl_position, 0.0, 0.0]
-    
+
     Calculator1 = Calculator(Input=Slice1)
-    
+
     #Calculator1.AttributeMode = 'point_data'
     Calculator1.AttributeMode = 'Point Data'
     Calculator1.Function = 'log10(coords.kHat * '+str(utau)+'/'+str(nu)+')'
     Calculator1.ResultArrayName = 'yp'
-    
+
     Calculator2 = Calculator(Input=Calculator1)
-    
+
     #Calculator2.AttributeMode = 'point_data'
     Calculator2.AttributeMode = 'Point Data'
     Calculator2.Function = '(V.iHat - '+ str(wall_vel) +')/ '+str(utau)
     Calculator2.ResultArrayName = 'up'
-    
+
     Calculator2.UpdatePipeline()
-    
+
     PlotOnSortedLines1 = PlotOnSortedLines(Input=Calculator2)
-    
+
     ExtractSelection1 = ExtractSelection(Input=PlotOnSortedLines1)
-    
+
     selection_id = []
-    
+
     for i in range(1,PlotOnSortedLines1.PointData.GetArray(0).GetNumberOfTuples()):
         selection_id.append(3L)
         selection_id.append(-1L)
         selection_id.append(i)
-        
-        
+
+
     selection_source_2386 = CompositeDataIDSelectionSource( ContainingCells=0, InsideOut=0, FieldType='POINT', IDs=selection_id)
-                                                            
+
     ExtractSelection1.Selection = selection_source_2386
-    
-    
+
+
     DataRepresentation3 = Show()
     DataRepresentation3.XArrayName = 'yp'
     DataRepresentation3.CompositeDataSetIndex = 3
     DataRepresentation3.UseIndexForXAxis = 0
-    
+
     chart_variable_name = 'up'
 
     my_representation0 = GetDisplayProperties(ExtractSelection1)
     my_representation0.SeriesLabel = [chart_variable_name, 'y+='+('%.2f')%(yplus)+' '+'k+='+('%.2f')%(kplus)+' '+'ut='+('%.2f')%(utau)+' '+label]
     my_representation0.SeriesColor = [chart_variable_name, str(colour[0]), str(colour[1]), str(colour[2])]
 #    my_representation0.SeriesVisibility = ['V (0)', '0', 'V (1)', '0', 'V (2)', '0', 'V (Magnitude)', '0', 'p', '0', 'T', '0', 'rho', '0', 'mach', '0', 'eddy', '0', 'yplus', '0', 'ut', '0', 'nu', '0', 'pressureforce (0)', '0', 'pressureforce (1)', '0', 'pressureforce (2)', '0', 'pressureforce (Magnitude)', '0', 'frictionforce (0)', '0', 'frictionforce (1)', '0', 'frictionforce (2)', '0', 'frictionforce (Magnitude)', '0', 'yp', '0', 'up', '1', 'arc_length', '0', 'Points (0)', '0', 'Points (1)', '0', 'Points (2)', '0', 'Points (Magnitude)', '0', 'vtkOriginalIndices', '0','vtkOriginalPointIds','0']
-        
+
     my_representation0.UpdatePipeline()
     visibility = []
     for name in my_representation0.GetProperty("SeriesNamesInfo"):
         visibility.append(name)
-        if name == chart_variable_name: 
+        if name == chart_variable_name:
             visibility.append("1")
-        else: 
+        else:
             visibility.append("0")
 
     print my_representation0.GetProperty("SeriesNamesInfo")
@@ -147,14 +147,14 @@ def plot_profile(label,colour,file_root):
     #        my_representation0.SeriesVisibility = [ s, '0' ]
     #        print s
     #    i+=1
-        
+
     #my_representation0.SeriesVisibility = ['up', '1']
     my_representation0.SeriesVisibility = visibility
-    
+
     #my_representation0.SeriesPlotCorner = ['yp', '1']
 
     my_representation0.UpdatePipeline()
-    
+
     my_view0 = GetRenderView()
     my_view0.ChartTitle = 'Zero Pressure Gradient Flat Plate'
     my_view0.ChartTitleFont = ['Arial', '24', '1', '0']
@@ -167,84 +167,84 @@ def plot_profile(label,colour,file_root):
 
 def plot_velocity_profile(label,colour,file_root):
     wall = PVDReader( FileName=file_root+'_wall.pvd' )
-    
+
     drag = MinMax(Input=wall)
     drag.Operation = "SUM"
 
     drag.UpdatePipeline()
-    
+
     drag_client = servermanager.Fetch(drag)
     cd = drag_client.GetCellData().GetArray("frictionforce").GetValue(0)
-    
+
     wall_slice = Slice(Input=wall, SliceType="Plane" )
-    
+
     wall_slice.SliceType.Normal = [1.0,0.0,0.0]
     wall_slice.SliceType.Origin = [bl_position, 0.0, 0.0]
-    
+
     wall_slice.UpdatePipeline()
-    
+
     wall_slice_client = servermanager.Fetch(wall_slice)
     nu = wall_slice_client.GetCellData().GetArray("nu").GetValue(0)
     utau = wall_slice_client.GetCellData().GetArray("ut").GetValue(0)
     yplus = wall_slice_client.GetCellData().GetArray("yplus").GetValue(0)
     cf    = wall_slice_client.GetCellData().GetArray("frictionforce").GetValue(0)
     wall_vel = wall_slice_client.GetCellData().GetArray("V").GetValue(0)
-    
+
     wall_vel = 0.0
 
     symmetry = PVDReader( FileName=file_root+'_symmetry.pvd' )
-    
+
     CellDatatoPointData1 = CellDatatoPointData(Input=symmetry)
     CellDatatoPointData1.PassCellData = 1
-    
+
     # Removes second symmetry plane keeping y max
     Clip1 = Clip(Input=CellDatatoPointData1, ClipType="Plane" )
     Clip1.ClipType.Normal = [0.0,1.0,0.0]
     Clip1.ClipType.Origin = [0.0, -0.5, 0.0]
-    
+
     Clip2 = Clip(Input=Clip1, ClipType="Plane" )
     Clip2.ClipType.Normal = [0.0,0.0,1.0]
     Clip2.ClipType.Origin = [0.0, 0.0, 0.05]
     Clip2.InsideOut = 1
-    
+
     Slice1 = Slice(Input=Clip2, SliceType="Plane" )
-    
+
     Slice1.SliceType.Normal = [1.0,0.0,0.0]
     Slice1.SliceType.Origin = [bl_position, 0.0, 0.0]
-        
+
     Calculator2 = Calculator(Input=Slice1)
-    
+
     Calculator2.AttributeMode = 'Point Data'
     Calculator2.Function = '(V.iHat - '+ str(wall_vel) +')'
     Calculator2.ResultArrayName = 'vprof'
-    
+
     Calculator2.UpdatePipeline()
 
     PlotOnSortedLines1 = PlotOnSortedLines(Input=Calculator2)
-        
+
     DataRepresentation3 = Show()
     DataRepresentation3.XArrayName = 'vprof'
     DataRepresentation3.CompositeDataSetIndex = 3
     DataRepresentation3.UseIndexForXAxis = 0
 
     chart_variable_name = 'Points (2)'
-    
+
     my_representation0 = GetDisplayProperties(PlotOnSortedLines1)
     my_representation0.SeriesLabel = [chart_variable_name, 'y+=' + ('%.2f')%(yplus) + (' cd=%.6f' % (cd/reference_area)) + (' cf=%.5f' % (cf/face_area))+ ' ' + label]
-    my_representation0.SeriesColor = [chart_variable_name, str(colour[0]), str(colour[1]), str(colour[2])] 
-        
+    my_representation0.SeriesColor = [chart_variable_name, str(colour[0]), str(colour[1]), str(colour[2])]
+
     my_representation0.UpdatePipeline()
     visibility = []
     for name in my_representation0.GetProperty("SeriesNamesInfo"):
         visibility.append(name)
-        if name == chart_variable_name: 
+        if name == chart_variable_name:
             visibility.append("1")
-        else: 
+        else:
             visibility.append("0")
     my_representation0.SeriesVisibility = visibility
     my_representation0.UpdatePipeline()
 
-    
+
     my_view0 = GetRenderView()
     my_view0.ChartTitle = 'Zero Pressure Gradient Flat Plate'
     my_view0.ChartTitleFont = ['Arial', '24', '1', '0']
@@ -255,13 +255,13 @@ def plot_velocity_profile(label,colour,file_root):
 
 def plot_theory():
     uytheory_csv = CSVReader( FileName=[root_directory+'/u+y+theory.csv'] )
-    
+
     uytheory_csv.MergeConsecutiveDelimiters = 1
     uytheory_csv.FieldDelimiterCharacters = ' '
     uytheory_csv.HaveHeaders = 0
-    
+
     PlotData1 = PlotData(Input=uytheory_csv)
-    
+
     SetActiveSource(PlotData1)
     DataRepresentation2 = Show()
     DataRepresentation2.XArrayName = 'Field 1'
@@ -273,9 +273,9 @@ def plot_theory():
     DataRepresentation2.SeriesLabel = ['Field 0', 'u+=y+']
     DataRepresentation2.SeriesColor = ['Field 0', '0.7','0.7' ,'0.7' ]
 
-    
+
     PlotData2 = PlotData(Input=uytheory_csv)
-    
+
     SetActiveSource(PlotData2)
     DataRepresentation2 = Show()
     DataRepresentation2.XArrayName = 'Field 2'

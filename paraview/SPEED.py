@@ -1,5 +1,5 @@
 """
-Copyright (c) 2012, Zenotech Ltd
+Copyright (c) 2012-2017, Zenotech Ltd
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -25,8 +25,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 #try: paraview.simple
-#except: 
-    
+#except:
+
 from paraview.simple import *
 
 paraview.simple._DisableFirstRenderCameraReset()
@@ -34,6 +34,7 @@ paraview.simple._DisableFirstRenderCameraReset()
 import math
 import numpy as np
 from scipy.optimize import curve_fit
+from zutil import rotate_vector
 
 alpha = 0.0
 beta  = 0.0
@@ -42,38 +43,25 @@ reference_area = 1.0
 #face_area = 0.075823
 
 
-def rotate_vector(vec,alpha_degree,beta_degree):
-    """
-    Rotate vector by alpha and beta based on ESDU definition
-    """
-    alpha = math.radians(alpha_degree)
-    beta = math.radians(beta_degree)
-    rot = [0.0,0.0,0.0]
-    rot[0] =  math.cos(alpha)*math.cos(beta)*vec[0] + math.sin(beta)*vec[1]  + math.sin(alpha)*math.cos(beta)*vec[2]
-    rot[1] = -math.cos(alpha)*math.sin(beta)*vec[0] + math.cos(beta)*vec[1]  - math.sin(alpha)*math.sin(beta)*vec[2]
-    rot[2] = -math.sin(alpha)*               vec[0]                          + math.cos(alpha)*               vec[2]
-    return rot
-
-
 def calc_drag(file_root):
-    
+
     wall = PVDReader( FileName=file_root+'_wall.pvd' )
 
     CellDatatoPointData1 = CellDatatoPointData(Input=wall)
     CellDatatoPointData1.PassCellData = 1
-    
+
     sum = MinMax(Input=CellDatatoPointData1)
     sum.Operation = "SUM"
     sum.UpdatePipeline()
 
-    sum_client = servermanager.Fetch(sum)    
+    sum_client = servermanager.Fetch(sum)
     pforce = sum_client.GetCellData().GetArray("pressureforce").GetTuple(0)
     #fforce = sum_client.GetCellData().GetArray("frictionforce").GetTuple(0)
     #yplus = wall_slice_client.GetCellData().GetArray("yplus").GetValue(0)
-    
+
     pforce = rotate_vector(pforce,alpha,beta)
     #fforce = rotate_vector(fforce,alpha,beta)
-    
+
     return pforce
 
 def drag_curve(x,a,b,c,d):
