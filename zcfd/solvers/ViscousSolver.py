@@ -69,10 +69,10 @@ class ViscousSolver(ExplicitSolver):
         self.space_order = config.get_space_order('viscous')
 
     def march(self, rk_index, rk_coeff, cfl, cfl_transport,
-              cfl_coarse, real_time_step, time_order, safe_mode, use_rusanov):
+              real_time_step, time_order, safe_mode, use_rusanov):
         config.logger.debug("Explicit March")
         valid = self.solver.march(rk_index, rk_coeff,
-                                  cfl, cfl_transport, cfl_coarse,
+                                  cfl, cfl_transport,
                                   real_time_step, time_order, self.space_order, safe_mode, use_rusanov)
         return valid
 

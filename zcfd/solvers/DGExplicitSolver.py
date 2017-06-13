@@ -111,7 +111,7 @@ class DGExplicitSolver(ExplicitSolver):
             for rk_index in xrange(len(self.rk.coeff())):
                 # Runge-Kutta loop
                 valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[
-                                   rk_index], cfl, cfl_transport, cfl_coarse, real_time_step, time_order, self.safe_mode, 0)
+                                   rk_index], cfl, cfl_transport, real_time_step, time_order, self.safe_mode, 0)
                 if self.safe_mode and not valid:
                     raise InvalidSolution
 
@@ -127,7 +127,7 @@ class DGExplicitSolver(ExplicitSolver):
                 for rk_index in xrange(len(self.rk.coeff())):
                     # Runge-Kutta loop
                     valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[
-                                       rk_index], cfl, cfl_transport, cfl_coarse, real_time_step, time_order, self.safe_mode, polyLevel + 1)
+                                       rk_index], cfl, cfl_transport, real_time_step, time_order, self.safe_mode, polyLevel + 1)
                     if self.safe_mode and not valid:
                         raise InvalidSolution
 
@@ -139,15 +139,15 @@ class DGExplicitSolver(ExplicitSolver):
             for rk_index in xrange(len(self.rk.coeff())):
                 # Runge-Kutta loop
                 valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[
-                                   rk_index], cfl, cfl_transport, cfl_coarse, real_time_step, time_order, self.safe_mode, 0)
+                                   rk_index], cfl, cfl_transport, real_time_step, time_order, self.safe_mode, 0)
                 if self.safe_mode and not valid:
                     raise InvalidSolution
 
-    def march(self, rk_index, rk_coeff, tk_scale, tn_scale, cfl, cfl_transport, cfl_coarse, real_time_step, time_order, safe_mode, polyLevel):
+    def march(self, rk_index, rk_coeff, tk_scale, tn_scale, cfl, cfl_transport, real_time_step, time_order, safe_mode, polyLevel):
         config.logger.debug("Explicit March")
         valid = self.solver.march(rk_index, rk_coeff, tk_scale, tn_scale, cfl,
                                   cfl_transport,
-                                  cfl_coarse, real_time_step, time_order, self.space_order, polyLevel, safe_mode)
+                                  real_time_step, time_order, self.space_order, polyLevel, safe_mode)
         return valid
 
     def copy_solution(self):
