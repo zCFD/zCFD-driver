@@ -27,6 +27,8 @@ from zutil import mag
 import math
 import time
 
+from zutil import analysis
+
 
 def sum_and_zone_filter_array(input, array_name, ignore_zone, filter=None):
     sum = [0.0, 0.0, 0.0]
@@ -69,6 +71,7 @@ def sum_and_zone_filter(input, array_name, ignore_zone, filter=None):
 
 
 class GeomFilterLT:
+
     def __init__(self, val, idx):
         #
         self.val = val
@@ -83,6 +86,7 @@ class GeomFilterLT:
 
 
 class GeomFilterGT:
+
     def __init__(self, val, idx):
         #
         self.val = val
@@ -123,7 +127,7 @@ def calc_force_from_file(file_name, ignore_zone, half_model=False,
 def calc_force_wall(file_root, ignore_zone, half_model=False,
                     filter=None, **kwargs):
 
-    wall = PVDReader(FileName=file_root+'_wall.pvd')
+    wall = PVDReader(FileName=file_root + '_wall.pvd')
     wall.UpdatePipeline()
 
     force = calc_force(wall, ignore_zone, half_model, filter, **kwargs)
@@ -156,99 +160,103 @@ def calc_force(surface_data, ignore_zone, half_model=False,
         for i in range(0, 3):
             pforce[i] *= 2.0
             fforce[i] *= 2.0
-            
+
     del sum_client
 
     return pforce, fforce
 
-def calc_moment(surface_data,ignore_zone,half_model=False,
+
+def calc_moment(surface_data, ignore_zone, half_model=False,
                 filter=None, **kwargs):
-    
+
     alpha = 0.0
     if 'alpha' in kwargs:
         alpha = kwargs['alpha']
     beta = 0.0
     if 'beta' in kwargs:
         beta = kwargs['beta']
-        
+
     if 'ref_pt' in kwargs:
         sum_client = servermanager.Fetch(surface_data)
         if sum_client.GetCellData().GetArray("pressuremomentx"):
-            pmoment = sum_and_zone_filter(sum_client,"pressuremomentx",ignore_zone, filter)
-            fmoment = sum_and_zone_filter(sum_client,"frictionmomentx",ignore_zone, filter)
-            
-            pmoment = rotate_vector(pmoment,alpha,beta)
-            fmoment = rotate_vector(fmoment,alpha,beta)
+            pmoment = sum_and_zone_filter(
+                sum_client, "pressuremomentx", ignore_zone, filter)
+            fmoment = sum_and_zone_filter(
+                sum_client, "frictionmomentx", ignore_zone, filter)
+
+            pmoment = rotate_vector(pmoment, alpha, beta)
+            fmoment = rotate_vector(fmoment, alpha, beta)
             #fforce = rotate_vector(fforce,alpha,beta)
-        
+
             if half_model:
                 # This is only valid for X-Z plane reflection
                 pmoment[0] += -pmoment[0]
-                pmoment[1] +=  pmoment[1]
+                pmoment[1] += pmoment[1]
                 pmoment[2] += -pmoment[2]
-                
+
                 fmoment[0] += -fmoment[0]
-                fmoment[1] +=  fmoment[1]
+                fmoment[1] += fmoment[1]
                 fmoment[2] += -fmoment[2]
-            
-            
-            
+
             return pmoment, fmoment
-        
-        
+
     else:
-        sum_client = servermanager.Fetch(surface_data)    
-        pmoment = sum_and_zone_filter(sum_client,"pressuremoment",ignore_zone, filter)
-        fmoment = sum_and_zone_filter(sum_client,"frictionmoment",ignore_zone, filter)
-        
-        pmoment = rotate_vector(pmoment,alpha,beta)
-        fmoment = rotate_vector(fmoment,alpha,beta)
+        sum_client = servermanager.Fetch(surface_data)
+        pmoment = sum_and_zone_filter(
+            sum_client, "pressuremoment", ignore_zone, filter)
+        fmoment = sum_and_zone_filter(
+            sum_client, "frictionmoment", ignore_zone, filter)
+
+        pmoment = rotate_vector(pmoment, alpha, beta)
+        fmoment = rotate_vector(fmoment, alpha, beta)
         #fforce = rotate_vector(fforce,alpha,beta)
-    
+
         if half_model:
             # This is only valid for X-Z plane reflection
             pmoment[0] += -pmoment[0]
-            pmoment[1] +=  pmoment[1]
+            pmoment[1] += pmoment[1]
             pmoment[2] += -pmoment[2]
-            
+
             fmoment[0] += -fmoment[0]
-            fmoment[1] +=  fmoment[1]
+            fmoment[1] += fmoment[1]
             fmoment[2] += -fmoment[2]
-    
-        
+
         return pmoment, fmoment
 
 
+def calc_lift_centre_of_action(force, moment, ref_point):
+    # longitudinal centre xs0 at zs0
+    # spanwise centre ys0 at zs0
+    # residual Mz moment (Mx=My=0) mzs0
 
-def calc_lift_centre_of_action(force,moment,ref_point):
-    # longitudinal centre xs0 at zs0
-    # spanwise centre ys0 at zs0
-    # residual Mz moment (Mx=My=0) mzs0
-    
-    xs0 = ref_point[0] - moment[1]/force[2]
-    ys0 = ref_point[1] + moment[0]/force[2]
-    
+    xs0 = ref_point[0] - moment[1] / force[2]
+    ys0 = ref_point[1] + moment[0] / force[2]
+
     zs0 = ref_point[2]
-    mzs0 = moment[2] - force[1]*(xs0-ref_point[0]) + force[0]*(ys0-ref_point[1])
-    
-    return (xs0,ys0,zs0),mzs0 
-    
-def calc_drag_centre_of_action(force,moment,ref_point):
+    mzs0 = moment[2] - force[1] * \
+        (xs0 - ref_point[0]) + force[0] * (ys0 - ref_point[1])
+
+    return (xs0, ys0, zs0), mzs0
+
+
+def calc_drag_centre_of_action(force, moment, ref_point):
     # longitudinal centre xs0 at zs0
     # spanwise centre ys0 at zs0
     # residual Mz moment (Mx=My=0) mzs0
-    
-    zs0 = ref_point[2] + moment[1]/force[0]
-    ys0 = ref_point[1] - moment[2]/force[0]
-    
+
+    zs0 = ref_point[2] + moment[1] / force[0]
+    ys0 = ref_point[1] - moment[2] / force[0]
+
     xs0 = ref_point[0]
-    mzs0 = 0.0# moment[2] - force[1]*(xs0-ref_point[0]) + force[0]*(ys0-ref_point[1])
-    
-    return (xs0,ys0,zs0),mzs0
+    # moment[2] - force[1]*(xs0-ref_point[0]) + force[0]*(ys0-ref_point[1])
+    mzs0 = 0.0
+
+    return (xs0, ys0, zs0), mzs0
+
 
 def move_moment_ref_point(moment, ref_point, new_ref_point):
     pass
-     
+
 
 def get_span(wall):
     """ Returns the min and max y ordinate
@@ -367,6 +375,7 @@ def get_chord_spanwise(slice):
 
     return [min_pos, max_pos]
 
+
 def get_monitor_data(file, monitor_name, var_name):
     """ Return the _report file data corresponding to a monitor point and variable name
         """
@@ -381,10 +390,10 @@ def get_monitor_data(file, monitor_name, var_name):
     table = Table(monitor_client)
     data = table.RowData
     names = data.keys()
-    num_var = len(names)-2
+    num_var = len(names) - 2
     if (str(monitor_name) + "_" + str(var_name) in names):
         index = names.index(str(monitor_name) + "_" + str(var_name))
-        return (data[names[0]],data[names[index]])
+        return (data[names[0]], data[names[index]])
     else:
         print 'POST.PY: MONITOR POINT: ' + str(monitor_name) + "_" + str(var_name) + ' NOT FOUND'
 
@@ -408,20 +417,20 @@ def residual_plot(file, pl):
 
     names = data.keys()
 
-    num_var = len(names)-2
-    num_rows = ((num_var-1)/4)+1
+    num_var = len(names) - 2
+    num_rows = ((num_var - 1) / 4) + 1
 
-    fig = pl.figure(figsize=(40, 10*num_rows), dpi=100,
+    fig = pl.figure(figsize=(40, 10 * num_rows), dpi=100,
                     facecolor='w', edgecolor='k')
 
     fig.suptitle(file, fontsize=40, fontweight='bold')
 
-    for i in range(1, num_var+1):
+    for i in range(1, num_var + 1):
         var_name = names[i]
         ax = fig.add_subplot(num_rows, 4, i)
         if 'rho' in var_name:
             ax.set_yscale('log')
-            ax.set_ylabel('l2norm '+var_name, multialignment='center')
+            ax.set_ylabel('l2norm ' + var_name, multialignment='center')
         else:
             ax.set_ylabel(var_name, multialignment='center')
 
@@ -454,7 +463,7 @@ def for_each(surface, func, **kwargs):
 def cp_profile_wall_from_file(file_root, slice_normal,
                               slice_origin, **kwargs):
 
-    wall = PVDReader(FileName=file_root+'_wall.pvd')
+    wall = PVDReader(FileName=file_root + '_wall.pvd')
     clean = CleantoGrid(Input=wall)
     clean.UpdatePipeline()
     Delete(wall)
@@ -463,7 +472,7 @@ def cp_profile_wall_from_file(file_root, slice_normal,
     merged.UpdatePipeline()
     Delete(clean)
     del clean
-    profile =  cp_profile(merged, slice_normal, slice_origin, **kwargs)
+    profile = cp_profile(merged, slice_normal, slice_origin, **kwargs)
     Delete(merged)
     del merged
     return profile
@@ -472,7 +481,7 @@ def cp_profile_wall_from_file(file_root, slice_normal,
 def cp_profile_wall_from_file_span(file_root, slice_normal,
                                    slice_origin, **kwargs):
 
-    wall = PVDReader(FileName=file_root+'_wall.pvd')
+    wall = PVDReader(FileName=file_root + '_wall.pvd')
     clean = CleantoGrid(Input=wall)
     clean.UpdatePipeline()
     Delete(wall)
@@ -481,7 +490,7 @@ def cp_profile_wall_from_file_span(file_root, slice_normal,
     merged.UpdatePipeline()
     Delete(clean)
     del clean
-    profile =  cp_profile_span(merged, slice_normal, slice_origin, **kwargs)
+    profile = cp_profile_span(merged, slice_normal, slice_origin, **kwargs)
     Delete(merged)
     del merged
     return profile
@@ -504,15 +513,20 @@ def cp_profile(surface, slice_normal, slice_origin, **kwargs):
     if 'rotate_geometry' in kwargs:
         rotate_geometry = kwargs['rotate_geometry']
 
-    point_data = CellDatatoPointData(Input=surface)
+    clean = CleantoGrid(Input=surface)
+    clean.UpdatePipeline()
+
+    point_data = CellDatatoPointData(Input=clean)
     point_data.PassCellData = 1
-    
+    Delete(clean)
+    del clean
+
     if 'filter' in kwargs:
         filter_zones = kwargs['filter']
         calc_str = ''.join('(zone={:d})|'.format(i) for i in filter_zones)
         filter_data = Calculator(Input=point_data)
         filter_data.AttributeMode = 'Cell Data'
-        filter_data.Function = ('if ('+calc_str[:-1]+', 1, 0)')
+        filter_data.Function = ('if (' + calc_str[:-1] + ', 1, 0)')
         filter_data.ResultArrayName = 'zonefilter'
         filter_data.UpdatePipeline()
         Delete(point_data)
@@ -523,7 +537,7 @@ def cp_profile(surface, slice_normal, slice_origin, **kwargs):
         point_data.UpdatePipeline()
         Delete(filter_data)
         del filter_data
-        
+
     slice = Slice(Input=point_data, SliceType="Plane")
 
     slice.SliceType.Normal = slice_normal
@@ -551,14 +565,13 @@ def cp_profile(surface, slice_normal, slice_origin, **kwargs):
     transform.Transform.Rotate = rotate_geometry
     transform.UpdatePipeline()
 
-
     if 'chord_func' in kwargs:
         pass
     else:
         chord_calc = Calculator(Input=transform)
         chord_calc.AttributeMode = 'Point Data'
         chord_calc.Function = ('(coords.iHat - ' + str(offset[0]) + ')/' +
-                               str(offset[1]-offset[0]))
+                               str(offset[1] - offset[0]))
         chord_calc.ResultArrayName = 'chord'
 
     # Attempt to calculate forces
@@ -580,8 +593,8 @@ def cp_profile(surface, slice_normal, slice_origin, **kwargs):
     sum_client = servermanager.Fetch(sum)
     if sum_client.GetCellData().GetArray("pressureforce"):
         pforce = sum_client.GetCellData().GetArray("pressureforce").GetTuple(0)
-        pforce = rotate_vector(pforce, alpha, beta)     
-           
+        pforce = rotate_vector(pforce, alpha, beta)
+
     if sum_client.GetCellData().GetArray("frictionforce"):
         fforce = sum_client.GetCellData().GetArray("frictionforce").GetTuple(0)
         fforce = rotate_vector(fforce, alpha, beta)
@@ -599,7 +612,7 @@ def cp_profile(surface, slice_normal, slice_origin, **kwargs):
     if sum_client.GetCellData().GetArray("pressuremoment"):
         pmoment = sum_client.GetCellData().GetArray("pressuremoment").GetTuple(0)
         pmoment = rotate_vector(pmoment, alpha, beta)
-        
+
     if sum_client.GetCellData().GetArray("frictionmoment"):
         fmoment = sum_client.GetCellData().GetArray("frictionmoment").GetTuple(0)
         fmoment = rotate_vector(fmoment, alpha, beta)
@@ -607,11 +620,10 @@ def cp_profile(surface, slice_normal, slice_origin, **kwargs):
     if sum_client.GetCellData().GetArray("pressuremomentx"):
         pmomentx = sum_client.GetCellData().GetArray("pressuremomentx").GetTuple(0)
         pmomentx = rotate_vector(pmomentx, alpha, beta)
-        
+
     if sum_client.GetCellData().GetArray("frictionmomentx"):
         fmomentx = sum_client.GetCellData().GetArray("frictionmomentx").GetTuple(0)
         fmomentx = rotate_vector(fmomentx, alpha, beta)
-
 
     if 'func' in kwargs:
         sorted_line = PlotOnSortedLines(Input=chord_calc)
@@ -666,7 +678,7 @@ def cp_profile_span(surface, slice_normal, slice_origin, **kwargs):
 
     chord_calc.AttributeMode = 'Point Data'
     chord_calc.Function = ('(coords.jHat - ' + str(offset[0]) + ')/' +
-                           str(offset[1]-offset[0]))
+                           str(offset[1] - offset[0]))
     chord_calc.ResultArrayName = 'chord'
 
     sum = MinMax(Input=slice)
@@ -689,15 +701,17 @@ def cp_profile_span(surface, slice_normal, slice_origin, **kwargs):
     return {'pressure force': pforce,
             'friction force': fforce}
 
+
 def cf_profile_wall_from_file(file_root, slice_normal,
                               slice_origin, **kwargs):
 
-    wall = PVDReader(FileName=file_root+'_wall.pvd')
+    wall = PVDReader(FileName=file_root + '_wall.pvd')
     clean = CleantoGrid(Input=wall)
     clean.UpdatePipeline()
     merged = MergeBlocks(Input=clean)
     merged.UpdatePipeline()
     return cf_profile(merged, slice_normal, slice_origin, **kwargs)
+
 
 def cf_profile(surface, slice_normal, slice_origin, **kwargs):
 
@@ -724,7 +738,7 @@ def cf_profile(surface, slice_normal, slice_origin, **kwargs):
 
     chord_calc.AttributeMode = 'Point Data'
     chord_calc.Function = ('(coords.iHat - ' + str(offset[0]) + ')/' +
-                           str(offset[1]-offset[0]))
+                           str(offset[1] - offset[0]))
     chord_calc.ResultArrayName = 'chord'
 
     cf_calc = Calculator(Input=chord_calc)
@@ -752,9 +766,6 @@ def cf_profile(surface, slice_normal, slice_origin, **kwargs):
 
     return {'pressure force': pforce,
             'friction force': fforce}
-
-
-
 
 
 import csv
@@ -863,74 +874,10 @@ def sum_array(input, array_name):
             sum[i] += v[i]
     return sum
 
-from fabric.api import (env, run, cd, get, hide, settings,
-                        remote_tunnel, show, shell_env)
-from fabric.tasks import execute
-
-
-import logging
-log = logging.getLogger("paramiko.transport")
-sh = logging.StreamHandler()
-sh.setLevel(logging.DEBUG)
-log.addHandler(sh)
-
-import sys
-import multiprocessing as mp
-from multiprocessing import Process, Value
-process_id = None
-use_multiprocess = True
-# Uncomment for output logging
-# logger = mp.get_logger()
-# logger.addHandler(logging.StreamHandler(sys.stdout))
-# logger.setLevel(mp.SUBDEBUG)
-
-
-def pvserver(remote_dir, paraview_cmd, paraview_port, paraview_remote_port):
-
-    with show('debug'), remote_tunnel(int(paraview_remote_port),local_port=int(paraview_port)), cd(remote_dir):
-        # with cd(remote_dir):
-        if not use_multiprocess:
-            run('sleep 2;'+paraview_cmd+'</dev/null &>/dev/null&', pty=False)
-        else:
-            #    # run('sleep 2;'+paraview_cmd+'&>/dev/null',pty=False)
-            run('sleep 2;'+paraview_cmd)  # , pty=False)
-        # run(paraview_cmd+'</dev/null &>/dev/null',pty=False)
-        # run('screen -d -m "yes"')
-    # ssh asrc2 "(ls</dev/null &>/dev/null&) 2>&1; true" 2>/dev/null || echo SSH connection or remote command failed - either of them returned non-zero exit code $?
-
-
-def pvcluster(remote_dir, paraview_home, paraview_args,
-              paraview_port, paraview_remote_port, job_dict):
-
-    with show('debug'), remote_tunnel(int(paraview_remote_port), local_port=int(paraview_port)):
-        with shell_env(PARAVIEW_HOME=paraview_home, PARAVIEW_ARGS=paraview_args):
-            run('echo $PARAVIEW_HOME')
-            run('echo $PARAVIEW_ARGS')
-            run('mkdir -p '+remote_dir)
-            with cd(remote_dir):
-                cmd_line = 'mycluster --create pvserver.job --jobname=pvserver'
-                cmd_line += ' --jobqueue ' + job_dict['job_queue']
-                cmd_line += ' --ntasks ' + job_dict['job_ntasks']
-                cmd_line += ' --taskpernode ' + job_dict['job_ntaskpernode']
-                if 'vizstack' in paraview_args:
-                    cmd_line += ' --script mycluster-viz-paraview.bsh'
-                else:
-                    cmd_line += ' --script mycluster-paraview.bsh'
-                cmd_line += ' --project ' + job_dict['job_project']
-                run(cmd_line)
-                run('chmod u+rx pvserver.job')
-                run('mycluster --immediate --submit pvserver.job')
-
-
-def port_test(rport, lport):
-    # Run a test
-    with hide('everything'), remote_tunnel(int(rport), local_port=int(lport)):
-        run('cd')
-
 
 def get_case_file():
     with cd(remote_dir):
-        get(case_name+'.py', '%(path)s')
+        get(case_name + '.py', '%(path)s')
 
 
 def cat_case_file(remote_dir, case_name):
@@ -939,7 +886,7 @@ def cat_case_file(remote_dir, case_name):
             # cmd = 'cat '+case_name+'.py'
             import StringIO
             contents = StringIO.StringIO()
-            get(case_name+'.py', contents)
+            get(case_name + '.py', contents)
             # operate on 'contents' like a file object here, e.g. 'print
             return contents.getvalue()
 
@@ -950,7 +897,7 @@ def cat_status_file(remote_dir, case_name):
         # cmd = 'cat '+case_name+'_status.txt'
         import StringIO
         contents = StringIO.StringIO()
-        result = get(case_name+'_status.txt', contents)
+        result = get(case_name + '_status.txt', contents)
         if result.succeeded:
             # operate on 'contents' like a file object here, e.g. 'print
             return contents.getvalue()
@@ -958,294 +905,60 @@ def cat_status_file(remote_dir, case_name):
             return None
 
 
-def run_uname(with_tunnel):
-
-    with hide('everything'):
-        run('uname -a')
-
-
-def test_ssh(status, **kwargs):
-    global data_host
-    _remote_host = data_host
-    if 'data_host' in kwargs:
-        _remote_host = kwargs['data_host']
-    try:
-        env.use_ssh_config = True
-        execute(run_uname, False, hosts=[_remote_host])
-    except:
-        status.value = 0
-        return False
-    return True
-
-
-def test_ssh_mp(**kwargs):
-
-    # print 'Starting test ssh'
-    status = Value('i', 1)
-    process_id = mp.Process(target=test_ssh, args=(status,), kwargs=kwargs)
-    process_id.start()
-    process_id.join()
-    if status.value == 0:
-        return False
-
-    return True
-
-
-def test_remote_tunnel(**kwargs):
-    global data_host
-
-    _remote_host = data_host
-    if 'data_host' in kwargs:
-        _remote_host = kwargs['data_host']
-
-    try:
-        env.use_ssh_config = True
-        execute(run_uname, True, hosts=[_remote_host])
-    except:
-        return False
-
-    return True
-
-
-def get_remote_port(**kwargs):
-
-    global data_host, paraview_remote_port, paraview_port
-
-    _remote_host = data_host
-    if 'data_host' in kwargs:
-        _remote_host = kwargs['data_host']
-
-    paraview_port = '11111'
-    if 'paraview_port' in kwargs:
-        paraview_port = kwargs['paraview_port']
-
-    paraview_remote_port = '11113'
-    if 'paraview_remote_port' in kwargs:
-        paraview_remote_port = kwargs['paraview_remote_port']
-    else:
-        # Attempt to find an unused remote port
-        print 'Attempting to find unused port'
-        for p in range(12000, 13000):
-            tp = Value('i', p)
-
-            process_id = mp.Process(target=test_remote_port,
-                                    args=(port_test, tp,
-                                          paraview_port, _remote_host))
-            process_id.start()
-            process_id.join()
-            # print tp.value
-            if tp.value != 0:
-                break
-
-        print 'Selected Port: '+str(p)
-        paraview_remote_port = p
-
-
-def test_remote_port(port_test, port, paraview_port, remote_host):
-
-    try:
-        env.use_ssh_config = True
-        execute(port_test, port.value, paraview_port, hosts=[remote_host])
-        return True
-    except:
-        port.value = 0
-        return False
-
-
-def pvserver_start(remote_host, remote_dir, paraview_cmd):
-    if paraview_cmd is not None:
-        env.use_ssh_config = True
-        execute(pvserver, remote_dir, paraview_cmd, hosts=[remote_host])
-
-
-def pvserver_connect(**kwargs):
-    """
-    Be careful when adding to this function fabric execute calls do not play
-    well with multiprocessing. Do not mix direct fabric execute call and
-    mp based fabric execute calls
-    """
-    global remote_data, data_dir, data_host, remote_server_auto
-    global paraview_cmd, process_id, paraview_port, paraview_remote_port
-    global process_id
-
-    _paraview_cmd = paraview_cmd
-    if 'paraview_cmd' in kwargs:
-        _paraview_cmd = kwargs['paraview_cmd']
-
-    if '-sp' in _paraview_cmd or '--client-host' in _paraview_cmd:
-        print('pvserver_process: Please only provide pvserver'
-              'executable path and name without arguments')
-        print 'e.g. mpiexec -n 1 /path_to_pvserver/bin/pvserver'
-        return False
-
-    # Add Check for passwordless ssh
-    print 'Testing passwordless ssh access'
-    if not test_ssh_mp(**kwargs):
-        print 'ERROR: Passwordless ssh access to data host failed'
-        return False
-    print '-> Passed'
-
-    # Add check for paraview version
-
-    # Find free remote port
-    get_remote_port(**kwargs)
-
-    paraview_port = '11111'
-    if 'paraview_port' in kwargs:
-        paraview_port = kwargs['paraview_port']
-
-    if not use_multiprocess:
-        pvserver_process(**kwargs)
-    else:
-        print 'Starting pvserver connect'
-        process_id = mp.Process(target=pvserver_process, kwargs=kwargs)
-        process_id.start()
-        # process_id.join()
-
-    # time.sleep(6)
-
-    ReverseConnect(paraview_port)
-
-    return True
-
-
-def pvcluster_process(**kwargs):
-    pvserver_process(**kwargs)
-
-
-def pvserver_process(**kwargs):
-
-    global remote_data, data_dir, data_host, remote_server_auto
-    global paraview_cmd, paraview_home, paraview_port, paraview_remote_port
-
-    print 'Starting pvserver process'
-
-    _remote_dir = data_dir
-    if 'data_dir' in kwargs:
-        _remote_dir = kwargs['data_dir']
-    _paraview_cmd = paraview_cmd
-    if 'paraview_cmd' in kwargs:
-        _paraview_cmd = kwargs['paraview_cmd']
-    _paraview_home = paraview_home
-    if 'paraview_home' in kwargs:
-        _paraview_home = kwargs['paraview_home']
-    paraview_port = '11111'
-    if 'paraview_port' in kwargs:
-        paraview_port = kwargs['paraview_port']
-
-    """
-    _job_ntasks = 1
-    if 'job_ntasks' in kwargs:
-        _job_ntasks = kwargs['job_ntasks']
-    """
-
-    _remote_host = data_host
-    if 'data_host' in kwargs:
-        _remote_host = kwargs['data_host']
-
-    # This global variable may have already been set so check
-    if 'paraview_remote_port' not in globals():
-        paraview_remote_port = '11113'
-        if 'paraview_remote_port' in kwargs:
-            paraview_remote_port = kwargs['paraview_remote_port']
-        else:
-            # Attempt to find an unused remote port
-            print 'Attempting to find unused port'
-            for p in range(12000, 13000):
-                try:
-                    env.use_ssh_config = True
-                    execute(port_test, p, paraview_port, hosts=[_remote_host])
-                    break
-                except:
-                    pass
-            print 'Selected Port: '+str(p)
-            paraview_remote_port = p
-
-    if 'job_queue' in kwargs:
-        # Submit job
-
-        remote_hostname = _remote_host[_remote_host.find('@')+1:]
-
-        if 'vizstack' in kwargs:
-            paraview_args = ('/opt/vizstack/bin/viz-paraview -r ' +
-                             str(kwargs['job_ntasks']) + ' -c ' +
-                             remote_hostname + ' -p ' +
-                             str(paraview_remote_port))
-        else:
-            paraview_args = (' -rc --client-host=' + remote_hostname +
-                             ' -sp=' + str(paraview_remote_port))
-
-        print paraview_args
-
-        job_dict = {
-            'job_queue': kwargs['job_queue'],
-            'job_ntasks': kwargs['job_ntasks'],
-            'job_ntaskpernode': kwargs['job_ntaskpernode'],
-            'job_project': kwargs['job_project'],
-        }
-        if _paraview_home is not None:
-            env.use_ssh_config = True
-            execute(pvcluster, _remote_dir, _paraview_home, paraview_args,
-                    paraview_port, paraview_remote_port,
-                    job_dict, hosts=[_remote_host])
-    else:
-        # Run Paraview
-        if '-sp' in _paraview_cmd or '--client-host' in _paraview_cmd:
-            print ('pvserver_process: Please only provide pvserver'
-                   'executable path and name without arguments')
-            print 'e.g. mpiexec -n 1 /path_to_pvserver/bin/pvserver'
-            return False
-        if 'vizstack' in kwargs:
-            _paraview_cmd = (_paraview_cmd + ' -c localhost ' + ' -p ' +
-                             str(paraview_remote_port))
-        else:
-            _paraview_cmd = (_paraview_cmd +
-                             ' -rc --client-host=localhost -sp=' +
-                             str(paraview_remote_port))
-
-        if _paraview_cmd is not None:
-            env.use_ssh_config = True
-            execute(pvserver, _remote_dir, _paraview_cmd, paraview_port,
-                    paraview_remote_port, hosts=[_remote_host])
-
-
-def pvserver_disconnect():
-    Disconnect()
-    if process_id:
-        process_id.terminate()
-
 def get_case_parameters_str(case_name, **kwargs):
-    global remote_data, data_dir, data_host, remote_server_auto, paraview_cmd
-    _remote_dir = data_dir
+    #global remote_data, data_dir, data_host, remote_server_auto, paraview_cmd
+    _remote_dir = analysis.data.data_dir
     if 'data_dir' in kwargs:
         _remote_dir = kwargs['data_dir']
-    _remote_host = data_host
+    _remote_host = analysis.data.data_host
     if 'data_host' in kwargs:
         _remote_host = kwargs['data_host']
 
-    env.use_ssh_config = True
-    env.host_string = _remote_host
-    case_file_str = cat_case_file(_remote_dir, case_name)
-    return case_file_str
+    _remote_data = analysis.data.remote_data
+    if 'remote_data' in kwargs:
+        _remote_data = kwargs['remote_data']
+
+    if _remote_data:
+        env.use_ssh_config = True
+        env.host_string = _remote_host
+        case_file_str = cat_case_file(_remote_dir, case_name)
+        return case_file_str
+    else:
+        try:
+            # Get contents of local file
+            with open(_remote_dir + '/' + case_name + '.py') as f:
+                case_file_str = f.read()
+
+                if case_file_str is not None:
+                    # print status_file_str
+                    return case_file_str
+                else:
+                    print 'WARNING: ' + case_name + '.py file not found'
+                    return None
+        except:
+            print 'WARNING: ' + case_name + '.py file not found'
+            return None
+
 
 def get_case_parameters(case_name, **kwargs):
-    case_file_str = get_case_parameters_str(case_name,**kwargs)
+    case_file_str = get_case_parameters_str(case_name, **kwargs)
     exec case_file_str
     return parameters
 
 
 def get_status_dict(case_name, **kwargs):
-    global remote_data, data_dir, data_host, remote_server_auto, paraview_cmd
+    #global remote_data, data_dir, data_host, remote_server_auto, paraview_cmd
 
-    _remote_data = remote_data
+    _remote_data = analysis.data.remote_data
     if 'remote_data' in kwargs:
         _remote_data = kwargs['remote_data']
 
+    _remote_dir = analysis.data.data_dir
+    if 'data_dir' in kwargs:
+        _remote_dir = kwargs['data_dir']
+
     if _remote_data:
-        _remote_dir = data_dir
-        if 'data_dir' in kwargs:
-            _remote_dir = kwargs['data_dir']
-        _remote_host = data_host
+        _remote_host = analysis.data.data_host
         if 'data_host' in kwargs:
             _remote_host = kwargs['data_host']
 
@@ -1257,36 +970,46 @@ def get_status_dict(case_name, **kwargs):
             # print status_file_str
             return json.loads(status_file_str)
         else:
-            print 'WARNING: '+case_name+'_status.txt file not found'
+            print 'WARNING: ' + case_name + '_status.txt file not found'
             return None
     else:
-        # Get contents of local file
-        with open(case_name+'_status.txt') as f:
-            status_file_str = f.read()
+        try:
+            # Get contents of local file
+            with open(_remote_dir + '/' + case_name + '_status.txt') as f:
+                status_file_str = f.read()
 
-            if status_file_str is not None:
-                # print status_file_str
-                return json.loads(status_file_str)
-            else:
-                print 'WARNING: '+case_name+'_status.txt file not found'
-                return None
+                if status_file_str is not None:
+                    # print status_file_str
+                    return json.loads(status_file_str)
+                else:
+                    print 'WARNING: ' + case_name + '_status.txt file not found'
+                    return None
+        except Exception, e:
+            print 'WARNING: ' + case_name + '_status.txt file not found'
+            print 'Caught exception '+str(e)
+            return None
 
 
 def get_num_procs(case_name, **kwargs):
     # remote_host,remote_dir,case_name):
     status = get_status_dict(case_name, **kwargs)
-    if 'num processor' in status:
-        return status['num processor']
+    if status is not None:
+        if 'num processor' in status:
+            return status['num processor']
+        else:
+            return None
     else:
-        return None
+        print 'status file not found'
 
 
-def get_case_root(case_name, num_procs):
-    return case_name+'_P'+num_procs+'_OUTPUT/'+case_name
+def get_case_root(case_name, num_procs=None):
+    if num_procs is None:
+        num_procs = get_num_procs(case_name)
+    return case_name + '_P' + str(num_procs) + '_OUTPUT/' + case_name
 
 
 def get_case_report(case):
-    return case+'_report.csv'
+    return case + '_report.csv'
 
 
 def print_html_parameters(parameters):
@@ -1325,15 +1048,15 @@ def print_html_parameters(parameters):
 <tr><td>Speed</td><td>$speed</td></tr>
 <tr><td>Mach No</td><td>$mach</td></tr>
 </table>'''
-    html_output=string.Template(html_template)
-    
-    return html_output.substitute({'pressure':conditions['pressure'],
-                        'temperature':conditions['temperature'],
-                        'reynolds':reynolds,
-                        'reflength':reflength,
-                        'speed':speed,
-                        'mach':mach,
-                        })
+    html_output = string.Template(html_template)
+
+    return html_output.substitute({'pressure': conditions['pressure'],
+                                   'temperature': conditions['temperature'],
+                                   'reynolds': reynolds,
+                                   'reflength': reflength,
+                                   'speed': speed,
+                                   'mach': mach,
+                                   })
 
 import uuid
 import time
@@ -1354,7 +1077,7 @@ class ProgressBar(object):
         display(pb)
 
     def __iadd__(self, v):
-        self.update(self.val+v)
+        self.update(self.val + v)
         return self
 
     def complete(self):
@@ -1366,16 +1089,16 @@ class ProgressBar(object):
         display(Javascript("$('div#%s').width('%i%%')" % (self.divid, i)))
 
 
-remote_data = True
-data_dir = 'data'
-data_host = 'user@server'
-remote_server_auto = True
-paraview_cmd = 'mpiexec pvserver'
-paraview_home = '/usr/local/bin/'
-job_queue = 'default'
-job_tasks = 1
-job_ntaskpernode = 1
-job_project = 'default'
+#remote_data = True
+#data_host = 'user@server'
+#data_dir = 'data'
+#remote_server_auto = True
+#paraview_cmd = 'mpiexec pvserver'
+#paraview_home = '/usr/local/bin/'
+#job_queue = 'default'
+#job_tasks = 1
+#job_ntaskpernode = 1
+#job_project = 'default'
 
 
 def data_location_form_html(**kwargs):

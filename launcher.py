@@ -3,7 +3,6 @@
 import sys
 import os
 from zcfd import zCFDSolver
-#import libzCFDVersion
 
 
 def RequiredModuleCheck():
@@ -22,24 +21,25 @@ def RequiredModuleCheck():
         print 'Please install mpi4py'
         sys.exit(1)
 
+
 class launcher:
     """Simple Launcher"""
+
     def main(self):
         RequiredModuleCheck()
-        #print libzCFDVersion.get_project_version()
+        # print libzCFDVersion.get_project_version()
         zcfd = zCFDSolver.zCFDSolver()
-        zcfd.main();
- 
-#def launch():
+        zcfd.main()
+
+# def launch():
 #    launcher = launcher()
 #    launcher.main()
 #
-#try:
+# try:
 #    import tau
 #    tau.run('launch()')
-#except ImportError:
-     
+# except ImportError:
+
 if __name__ == "__main__":
     launcher = launcher()
     launcher.main()
-

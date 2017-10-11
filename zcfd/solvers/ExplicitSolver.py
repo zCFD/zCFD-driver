@@ -26,16 +26,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 import os
 import threading
-import math
 import time
 import pandas as pd
 from mpi4py import MPI
-from colorama import Fore, Back, Style
+from colorama import Fore
+import numpy
 
 
+from . import utils
+from .cfl import CFL
 from zcfd.utils import config, TimeSpent, Parameters
-
-from zcfd.solvers import utils
 
 
 class InvalidSolution(Exception):
@@ -46,12 +46,8 @@ class ExplicitSolver(object):
 
     def __init__(self, equations):
         self.rk = []
-        self.cfl = 0.0
-        self.cfl_transport = 0.0
-        self.cfl_coarse = 0.0
-        self.cfl_ramp = 1.0
-        self.cfl_ini = 0.0
-        self.cfl_current = 0.0
+        self.cfl = CFL(0.0)
+        self.cfl_ramp_func = None
         self.cycles = 0
         self.num_mesh_levels = 1000
         self.multigrid_cycles = 0
@@ -66,17 +62,12 @@ class ExplicitSolver(object):
         self.surface_variable_list = 0.0
         self.volume_variable_list = 0.0
         self.output_frequency = 0.0
+        self.unsteady_restart_output_frequency = 1
         self.report_frequency = 0.0
         self.safe_mode = False
-        self.cfl_ramp_func = None
         self.local_timestepping = True
         self.lusgs = False
         self.PMG = False
-        self.minCFL = 1.0
-        self.maxCFL = 10.0
-        self.cflGrowth = 1.05
-        self.lusgsRampOver = (
-            self.maxCFL / (self.minCFL * math.log10(self.cflGrowth)))
         self.equations = equations
         self.finite_volume_solver = True
         self.include_backward_sweep = True
@@ -88,115 +79,124 @@ class ExplicitSolver(object):
         self.lusgs_fd_jacobian = False
         self.lusgs_use_rusanov_jacobian = True
         self.start_output_real_time_cycle = 0
-        self.end_output_real_time_cycle = -1
         self.output_real_time_cycle_freq = 1
 
     def parameter_update(self):
-        self.cfl = config.parameters['time marching']['cfl']
-        self.cfl_ini = self.cfl
-
-        self.cfl_transport = config.parameters['time marching'].get('cfl transport', self.cfl)
-        self.cfl_coarse = config.parameters['time marching'].get('cfl coarse', self.cfl)
+        self.cfl.max_cfl = config.parameters['time marching']['cfl']
+        self.cfl.min_cfl = self.cfl.max_cfl
+        self.cfl.transport_cfl = config.parameters[
+            'time marching'].get('cfl transport', self.cfl.max_cfl)
+        self.cfl.coarse_cfl = config.parameters[
+            'time marching'].get('cfl coarse', self.cfl.max_cfl)
         if 'cfl ramp factor' in config.parameters['time marching']:
-            self.cfl_ramp = config.parameters['time marching']['cfl ramp factor']['growth']
-            self.cfl_ini = config.parameters['time marching']['cfl ramp factor']['initial']
+            self.cfl.cfl_ramp = config.parameters[
+                'time marching']['cfl ramp factor'].get('growth', 1.0)
+            self.cfl.min_cfl = config.parameters[
+                'time marching']['cfl ramp factor']['initial']
+        if 'ramp func' in config.parameters['time marching']:
+            self.cfl_ramp_func = config.parameters[
+                'time marching']['ramp func']
+
         # Default to 5 stage RK
         rk_scheme_data = '5'
         # Check for overrides
-        if 'scheme' in config.parameters['time marching'] and 'name' in config.parameters['time marching']['scheme']:
-            if config.parameters['time marching']['scheme']['name'] == 'euler':
-                rk_scheme_data = 'euler'
-            elif config.parameters['time marching']['scheme']['name'] == 'rk third order tvd':
-                rk_scheme_data = 'rk third order tvd'
-            else:
-                if 'stage' in config.parameters['time marching']['scheme']:
-                    rk_scheme_data = str(
-                        config.parameters['time marching']['scheme']['stage'])
-                elif 'class' in config.parameters['time marching']['scheme']:
-                    rk_scheme_data = config.parameters['time marching']['scheme']['class']
+        if 'scheme' in config.parameters['time marching']:
+            if 'name' in config.parameters['time marching']['scheme']:
+                if config.parameters['time marching']['scheme']['name'] == 'euler':
+                    rk_scheme_data = 'euler'
+                else:
+                    if 'stage' in config.parameters['time marching']['scheme']:
+                        rk_scheme_data = str(
+                            config.parameters['time marching']['scheme']['stage'])
+                    elif 'class' in config.parameters['time marching']['scheme']:
+                        rk_scheme_data = config.parameters[
+                            'time marching']['scheme']['class']
+                self.lusgs = config.parameters['time marching']['scheme']['name'] == 'lu-sgs'
+            if 'kind' in config.parameters['time marching']['scheme']:
+                if config.parameters['time marching']['scheme']['kind'] == 'global timestepping':
+                    self.local_timestepping = False
 
         self.rk = utils.getRungeKutta(rk_scheme_data)
 
         self.cycles = config.parameters['time marching']['cycles']
-        self.num_mesh_levels = min(self.num_mesh_levels, config.parameters['time marching']['multigrid'])
+        self.num_mesh_levels = min(self.num_mesh_levels, config.parameters[
+                                   'time marching']['multigrid'])
         self.multigrid_cycles = self.cycles
         if 'multigrid cycles' in config.parameters['time marching']:
-            self.multigrid_cycles = config.parameters['time marching']['multigrid cycles']
+            self.multigrid_cycles = config.parameters[
+                'time marching']['multigrid cycles']
         if 'multigrid ramp' in config.parameters['time marching']:
-            self.multigrid_ramp = config.parameters['time marching']['multigrid ramp']
+            self.multigrid_ramp = config.parameters[
+                'time marching']['multigrid ramp']
 
-        if 'scheme' in config.parameters['time marching'] and 'name' in config.parameters['time marching']['scheme']:
-            if config.parameters['time marching']['scheme']['name'] == 'lu-sgs':
-                self.lusgs = True
-        if 'scheme' in config.parameters['time marching'] and 'kind' in config.parameters['time marching']['scheme']:
-            if config.parameters['time marching']['scheme']['kind'] == 'global timestepping':
-                self.local_timestepping = False
-
-        self.prolongation_factor = 0.75
-        if 'prolong factor' in config.parameters['time marching']:
-            self.prolongation_factor = config.parameters['time marching']['prolong factor']
-        self.prolongation_transport_factor = 0.3
-        if 'prolong transport factor' in config.parameters['time marching']:
-            self.prolongation_transport_factor = config.parameters['time marching']['prolong transport factor']
+        self.prolongation_factor = config.parameters[
+            'time marching'].get('prolong factor', 0.75)
+        self.prolongation_transport_factor = config.parameters[
+            'time marching'].get('prolong transport factor', 0.3)
 
         if 'unsteady' in config.parameters['time marching']:
-            self.total_time = config.parameters['time marching']['unsteady']['total time']
-            self.real_time_step = config.parameters['time marching']['unsteady']['time step']
+            self.total_time = config.parameters[
+                'time marching']['unsteady']['total time']
+            self.real_time_step = config.parameters[
+                'time marching']['unsteady']['time step']
             if 'order' in config.parameters['time marching']['unsteady']:
                 self.time_order = config.get_time_order(
                     config.parameters['time marching']['unsteady']['order'])
-            self.unsteady_start = config.parameters['time marching']['unsteady'].get('start', 0)
+            self.unsteady_start = config.parameters[
+                'time marching']['unsteady'].get('start', 0)
 
-        self.surface_variable_list = config.parameters['write output']['surface variables']
-        self.volume_variable_list = config.parameters['write output']['volume variables']
+        self.surface_variable_list = config.parameters[
+            'write output']['surface variables']
+        self.volume_variable_list = config.parameters[
+            'write output']['volume variables']
 
-        self.output_frequency = min(config.parameters['write output']['frequency'], max(self.cycles, 1))
-        self.report_frequency = min(config.parameters['report']['frequency'], max(self.cycles, 1))
+        self.output_frequency = min(config.parameters['write output'][
+                                    'frequency'], max(self.cycles, 1))
+
+        if 'unsteady restart file output frequency' in config.parameters['write output']:
+            self.unsteady_restart_output_frequency = config.parameters['write output']['unsteady restart file output frequency']
+
+        self.report_frequency = min(config.parameters['report'][
+                                    'frequency'], max(self.cycles, 1))
         if 'start output real time cycle' in config.parameters['write output']:
-            self.start_output_real_time_cycle = config.parameters['write output']['start output real time cycle']
-        if 'end output real time cycle' in config.parameters['write output']:
-           self.end_output_real_time_cycle = config.parameters['write output']['end output real time cycle']
+            self.start_output_real_time_cycle = config.parameters[
+                'write output']['start output real time cycle']
 
         if 'output real time cycle frequency' in config.parameters['write output']:
-           self.output_real_time_cycle_freq = config.parameters['write output']['output real time cycle frequency']
+            self.output_real_time_cycle_freq = config.parameters[
+                'write output']['output real time cycle frequency']
 
         if 'safe' in config.parameters:
-            self.safe_mode = config.parameters['safe'] == 'true'
-
-        if 'ramp func' in config.parameters['time marching']:
-            self.cfl_ramp_func = config.parameters['time marching']['ramp func']
+            self.safe_mode = config.parameters['safe']
 
         if 'scheme' in config.parameters['time marching'] and 'name' in config.parameters['time marching']['scheme']:
             if config.parameters['time marching']['scheme']['name'] == 'lu-sgs':
                 if 'lu-sgs' in config.parameters['time marching']:
-                    if 'Min CFL' in config.parameters['time marching']['lu-sgs']:
-                        self.minCFL = config.parameters['time marching']['lu-sgs']['Min CFL']
-                    if 'Max CFL' in config.parameters['time marching']['lu-sgs']:
-                        self.maxCFL = config.parameters['time marching']['lu-sgs']['Max CFL']
-                    if 'CFL growth' in config.parameters['time marching']['lu-sgs']:
-                        self.cflGrowth = config.parameters['time marching']['lu-sgs']['CFL growth']
                     if 'Include Backward Sweep' in config.parameters['time marching']['lu-sgs']:
-                        self.include_backward_sweep = config.parameters['time marching']['lu-sgs']['Include Backward Sweep']
+                        self.include_backward_sweep = config.parameters[
+                            'time marching']['lu-sgs']['Include Backward Sweep']
                     if 'Number Of SGS Cycles' in config.parameters['time marching']['lu-sgs']:
-                        self.num_sgs_sweeps = config.parameters['time marching']['lu-sgs']['Number Of SGS Cycles']
+                        self.num_sgs_sweeps = config.parameters[
+                            'time marching']['lu-sgs']['Number Of SGS Cycles']
                     if 'Jacobian Epsilon' in config.parameters['time marching']['lu-sgs']:
-                        self.lusgs_epsilon = config.parameters['time marching']['lu-sgs']['Jacobian Epsilon']
+                        self.lusgs_epsilon = config.parameters[
+                            'time marching']['lu-sgs']['Jacobian Epsilon']
                     if 'Include Relaxation' in config.parameters['time marching']['lu-sgs']:
-                        self.lusgs_add_relaxation = config.parameters['time marching']['lu-sgs']['Include Relaxation']
+                        self.lusgs_add_relaxation = config.parameters[
+                            'time marching']['lu-sgs']['Include Relaxation']
                     if 'Jacobian Update Frequency' in config.parameters['time marching']['lu-sgs']:
-                        self.lusgs_jacobian_update_frequency = config.parameters['time marching']['lu-sgs']['Jacobian Update Frequency']
+                        self.lusgs_jacobian_update_frequency = config.parameters[
+                            'time marching']['lu-sgs']['Jacobian Update Frequency']
                     if 'Finite Difference Jacobian' in config.parameters['time marching']['lu-sgs']:
-                        self.lusgs_fd_jacobian = (config.parameters['time marching']['lu-sgs']['Finite Difference Jacobian'] == 'true')
+                        self.lusgs_fd_jacobian = config.parameters['time marching'][
+                            'lu-sgs']['Finite Difference Jacobian']
                     if 'Use Rusanov Flux For Jacobian' in config.parameters['time marching']['lu-sgs']:
-                        self.lusgs_use_rusanov_jacobian = (config.parameters['time marching']['lu-sgs']['Use Rusanov Flux For Jacobian'] == 'true')
-
-
+                        self.lusgs_use_rusanov_jacobian = config.parameters['time marching'][
+                            'lu-sgs']['Use Rusanov Flux For Jacobian']
 
         if 'High Order Filter Frequency' in config.parameters['time marching']:
-            self.filter_freq = config.parameters['time marching']['High Order Filter Frequency']
-
-        self.lusgsRampOver = (
-            self.maxCFL / (self.minCFL * math.log10(max(1.0001, self.cflGrowth))))
+            self.filter_freq = config.parameters[
+                'time marching']['High Order Filter Frequency']
 
         # Ensure global timestepping state
         if not self.local_timestepping:
@@ -205,39 +205,6 @@ class ExplicitSolver(object):
             self.cycles = int(self.total_time / self.real_time_step)
             self.num_mesh_levels = 1
 
-
-    def updatecfl(self):
-        """
-        Updates the current values for cfl and returns the value to be used
-        for this cycle
-        """
-        if self.cfl_ramp_func:
-            self.cfl, self.cfl_transport, self.cfl_coarse = self.cfl_ramp_func(self.solve_cycle, self.cfl, self.cfl_transport, self.cfl_coarse)
-
-        if self.lusgs:
-            if self.solve_cycle > self.lusgsRampOver:
-                thiscfl = self.maxCFL
-                #this.cfl = self.maxCFL
-            else:
-                thiscfl = min(self.minCFL * self.cflGrowth **
-                              (max(0, self.solve_cycle - 1)), self.maxCFL)
-        else:
-            thiscfl = self.cfl
-
-        if self.PMG:
-            config.logger.info(Fore.GREEN + "CFL %s" %
-                               (thiscfl) + Fore.RESET)
-        elif self.lusgs:
-            config.logger.info(Fore.GREEN + "CFL %s (%s) - MG %s (coarse mesh: %s)" % (thiscfl, thiscfl*self.cfl_transport/self.cfl,
-                                                                                       thiscfl*self.cfl_coarse/self.cfl,
-                                                                                       self.num_mesh_levels - 1) + Fore.RESET)
-        else:
-            config.logger.info(Fore.GREEN + "CFL %s (%s) - MG %s (coarse mesh: %s)" % (thiscfl, self.cfl_transport, self.cfl_coarse,
-                                                                                       self.num_mesh_levels - 1) + Fore.RESET)
-
-        return thiscfl
-
-
     def solve(self):
         """
         Explicit Solver loop
@@ -245,7 +212,6 @@ class ExplicitSolver(object):
         config.logger.debug("Solver solve")
 
         self.report_list = [[]]
-
 
         # Update parameters from control dictionary
         self.parameter_update()
@@ -300,10 +266,6 @@ class ExplicitSolver(object):
             self.cycles = int(self.total_time / self.real_time_step)
             self.num_mesh_levels = 1
 
-        # Check to see if end_output_real_time_cycle has been set
-        if self.end_output_real_time_cycle == -1:
-            self.end_output_real_time_cycle = self.num_real_time_cycle + 1
-
         while self.real_time_cycle < self.num_real_time_cycle + 1:
             # for self.real_time_cycle in xrange(config.cycle_info[0],int(self.total_time/self.real_time_step)):
             # Set volume for time step
@@ -317,21 +279,22 @@ class ExplicitSolver(object):
 
                 if self.local_timestepping:
                     config.logger.info(Fore.RED + "Cycle %s (real time cycle: %s time: %s)" % (self.solve_cycle,
-                                                                                           self.real_time_cycle,
-                                                                                           self.real_time_cycle * self.real_time_step) + Fore.RESET)
+                                                                                               self.real_time_cycle,
+                                                                                               self.real_time_cycle * self.real_time_step) + Fore.RESET)
                 else:
                     config.logger.info(Fore.RED + "Cycle %s (time: %s)" % (self.solve_cycle,
                                                                            self.solve_cycle * self.real_time_step) + Fore.RESET)
-
-
-                thiscfl = self.updatecfl()
+                self.cfl.update(self.solve_cycle, self.real_time_cycle, self.cfl_ramp_func)
+                config.logger.info(Fore.GREEN + "CFL %s (%s) - MG %s (coarse mesh: %s)" % (self.cfl.cfl, self.cfl.transport,
+                                                                                   self.cfl.coarse,
+                                                                                   self.num_mesh_levels - 1) + Fore.RESET)
                 timeSpent.start("solving")
 
                 try:
-                    self.advance_multigrid(thiscfl, self.cfl_transport, self.cfl_coarse, self.real_time_step,
-                           min(self.time_order,
-                               self.real_time_cycle), self.num_mesh_levels,
-                           self.prolongation_factor, self.prolongation_transport_factor)
+                    self.advance_multigrid(self.cfl, self.real_time_step,
+                                           min(self.time_order,
+                                               self.real_time_cycle), self.num_mesh_levels,
+                                           self.prolongation_factor, self.prolongation_transport_factor)
 
                 except InvalidSolution:
                     config.logger.info(
@@ -341,7 +304,7 @@ class ExplicitSolver(object):
                     self.volume_variable_list.append('FailCell')
                     self.output(config.output_dir, output_name, self.surface_variable_list,
                                 self.volume_variable_list, self.real_time_cycle, total_cycles,
-                                self.local_timestepping and self.real_time_cycle * self.real_time_step or float(self.solve_cycle),False)
+                                self.local_timestepping and self.real_time_cycle * self.real_time_step or float(self.solve_cycle), False)
                     if isinstance(self.report_thread, threading.Thread):
                         self.report_thread.join()
                     self.sync()
@@ -350,31 +313,43 @@ class ExplicitSolver(object):
 
                 timeSpent.stop("solving")
 
-                config.logger.info(Fore.GREEN + "Timer: %s" %
-                                   timeSpent.generateReport() + Fore.RESET)
-
                 total_cycles += 1
 
+                timeSpent.start("update source terms")
+                # Update source terms
+                self.update_source_terms(self.solve_cycle, (self.solve_cycle >= max(self.cycles, self.unsteady_start)))
+                timeSpent.stop("update source terms")
+
+                timeSpent.start("output")
                 # Sync to host for output and or reporting
                 if self.solve_cycle == 1 or self.solve_cycle >= max(self.cycles, self.unsteady_start) or (self.solve_cycle % self.output_frequency == 0 or self.solve_cycle % self.report_frequency == 0):
                     self.host_sync()
+
+                # Output restart results file
+                if self.solve_cycle % self.output_frequency == 0 or self.solve_cycle >= max(self.cycles, self.unsteady_start):
+                    if self.real_time_cycle % self.unsteady_restart_output_frequency == 0:
+                        results_only = True
+                        output_name = config.options.case_name
+                        self.output(config.output_dir, output_name, self.surface_variable_list, self.volume_variable_list, self.real_time_cycle, total_cycles, self.local_timestepping and self.real_time_cycle * self.real_time_step or float(self.solve_cycle), results_only)
+                    else:
+                        config.logger.info(Fore.RED + "Restart file not written this real time step.  Reduce \'unsteady restart file output frequency\' if necessary. " + Fore.RESET)
+
                 # Output
                 if self.solve_cycle % self.output_frequency == 0 or self.solve_cycle >= max(self.cycles, self.unsteady_start):
                     # if self.solve_cycle > output_frequency:
                     #    self.output_thread.join()
                     output_name = config.options.case_name
-                    #self.output_thread = threading.Thread(name='output', target=self.output,args=(output_name,surface_variable_list,volume_variable_list,real_time_cycle,))
+                    # self.output_thread = threading.Thread(name='output', target=self.output,args=(output_name,surface_variable_list,volume_variable_list,real_time_cycle,))
                     # self.output_thread.start()
 
-                    results_only = not (self.real_time_cycle >= self.start_output_real_time_cycle and
-                                        self.real_time_cycle <= self.end_output_real_time_cycle and
-                                        self.real_time_cycle % self.output_real_time_cycle_freq == 0)
+                    if self.real_time_cycle >= self.start_output_real_time_cycle and self.real_time_cycle % self.output_real_time_cycle_freq == 0:
+                        results_only = False
+                        self.output(config.output_dir, output_name, self.surface_variable_list, self.volume_variable_list, self.real_time_cycle, total_cycles, self.local_timestepping and self.real_time_cycle * self.real_time_step or float(self.solve_cycle), results_only)
 
-                    self.output(config.output_dir, output_name, self.surface_variable_list,
-                                self.volume_variable_list, self.real_time_cycle, total_cycles,
-                                self.local_timestepping and self.real_time_cycle * self.real_time_step or float(self.solve_cycle), results_only)
+                timeSpent.stop("output")
 
                 # Reporting
+                timeSpent.start("reporting")
                 if ((self.real_time_cycle == 0) and (self.solve_cycle == 1)) or self.solve_cycle >= max(self.cycles, self.unsteady_start) or self.solve_cycle % self.report_frequency == 0 or self.solve_cycle == 1:
                     if (self.solve_cycle > 1 or self.real_time_cycle > 0) and isinstance(self.report_thread, threading.Thread):
                         self.report_thread.join()
@@ -385,8 +360,8 @@ class ExplicitSolver(object):
                     self.report_thread.start()
 
                     # If user has updated the control dictionary
-                    if self.solve_cycle >= max(self.cycles, self.unsteady_start):
-                        break
+                    # if self.solve_cycle >= max(self.cycles, self.unsteady_start):
+                    #    break
 
                     # Parse control dictionary if it has change
                     param = Parameters.Parameters()
@@ -394,12 +369,14 @@ class ExplicitSolver(object):
                         config.logger.info(
                             Fore.MAGENTA + 'Control dictionary changed - parsing' + Fore.RESET)
                         self.parameter_update()
-
-                # Update source terms
-                self.solver.update_source_terms(self.solve_cycle)
+                timeSpent.stop("reporting")
 
                 # Increment
                 self.solve_cycle += 1
+
+                config.logger.info(Fore.GREEN + "Timer: %s" %
+                                   timeSpent.generateReport() + Fore.RESET)
+
                 # self.host_sync()
             # Reset unsteady start
             self.unsteady_start = 0
@@ -427,26 +404,26 @@ class ExplicitSolver(object):
         config.logger.info("Timer Total: %s" %
                            timeSpent.generateReportAndReset())
 
-    def advance_solution(self, cfl, cfl_transport, cfl_coarse,
-                         real_time_step, time_order, mesh_level):
+    def advance_solution(self, cfl, real_time_step, time_order, mesh_level):
         """
         """
 
         if self.lusgs and self.finite_volume_solver:
             if mesh_level == 0:
-                self.advance_lusgs(cfl, cfl * self.cfl_transport/self.cfl, real_time_step,
+                self.advance_lusgs(cfl.cfl, cfl.transport, real_time_step,
                                    time_order, self.solve_cycle, mesh_level)
             else:
-                self.advance_lusgs(cfl * self.cfl_coarse/self.cfl, cfl * self.cfl_transport/self.cfl, real_time_step,
+                self.advance_lusgs(cfl.coarse, cfl.transport, real_time_step,
                                    time_order, self.solve_cycle, mesh_level)
         elif self.lusgs and mesh_level != 0:
-             self.advance_rk(self.cfl, self.cfl_transport, cfl_coarse, real_time_step, time_order)
+            self.advance_rk(cfl.cfl, cfl.transport,
+                            cfl.coarse, real_time_step, time_order)
         else:
             if mesh_level == 0:
-                self.advance_rk(cfl, cfl_transport, real_time_step, time_order)
+                self.advance_rk(cfl.cfl, cfl.transport, real_time_step, time_order)
             else:
-                self.advance_rk(cfl_coarse, min(cfl_transport, cfl_coarse), real_time_step, time_order)
-
+                self.advance_rk(cfl.coarse, min(
+                    cfl.transport, cfl.coarse), real_time_step, time_order)
 
     def advance_rk(self, cfl, cfl_transport, real_time_step, time_order):
         """
@@ -469,10 +446,6 @@ class ExplicitSolver(object):
         calculate_viscous = True
         fd_jacobian = self.lusgs_fd_jacobian
         use_rusanov = self.lusgs_use_rusanov_jacobian
-
-        # Always calculate viscous fluxes if using fd jacobian
-        if fd_jacobian:
-            calculate_viscous = True
 
         updateJacobian = False
         if (solve_cycle - 1) % self.lusgs_jacobian_update_frequency == 0:
@@ -512,11 +485,10 @@ class ExplicitSolver(object):
                                          self.safe_mode)
         self.update_halos()
 
-
     def advance_gmres(self, cfl, cfl_transport, real_time_step, time_order, solve_cycle):
         raise NotImplementedError
 
-    def advance_lusgs(self, cfl, cfl_transport, real_time_step, time_order, solve_cycle, mesh_level = 0):
+    def advance_lusgs(self, cfl, cfl_transport, real_time_step, time_order, solve_cycle, mesh_level=0):
 
         calculate_viscous = True
         fd_jacobian = self.lusgs_fd_jacobian
@@ -563,7 +535,10 @@ class ExplicitSolver(object):
         # self.set_mesh_level(mesh_number)
         # self.solver.set_cell_colour(-1)
         # self.solver.calculate_rhs(real_time_step,time_order,self.space_order)
-        #calculate_viscous = False
+        # calculate_viscous = False
+
+        converged = numpy.array(0, 'i')
+
         for sweep in xrange(self.num_sgs_sweeps):
             if mesh_level == 0:
                 config.logger.info("Starting Sweep %s" % sweep)
@@ -611,10 +586,10 @@ class ExplicitSolver(object):
 
             if mesh_level == 0:
                 self.host_sync()
-                new_report = self.report()
+                new_report = self.report(True)
                 from mpi4py import MPI
                 rank = MPI.COMM_WORLD.Get_rank()
-                converged = 0
+                converged = numpy.array(0, 'i')
                 if rank == 0:
                     if sweep == 0:
                         first_report = new_report
@@ -632,17 +607,18 @@ class ExplicitSolver(object):
 
                                 if abs(v1 - v2) / (v3 + 1.0e-8) < 0.1 or v1 < 1.0e-8:
                                     count += 1
+                                #print v1, v2, v3, abs(v1 - v2) / (v3 + 1.0e-8)
                         if count == nvar:
-                            converged = 1
+                            converged = numpy.array(1, 'i')
 
                     old_report = new_report
 
-                converged = MPI.COMM_WORLD.bcast(converged, root=0)
-                if converged == 1:
+                MPI.COMM_WORLD.Bcast([converged, MPI.INT], root=0)
+
+                if numpy.asscalar(converged) == 1:
                     break
 
-
-    def advance_multigrid(self, cfl, cfl_transport, cfl_coarse, real_time_step, time_order, num_mesh_levels,
+    def advance_multigrid(self, cfl, real_time_step, time_order, num_mesh_levels,
                           prolongation_factor, prolongation_transport_factor):
         """
         V-cycle multigrid with first solve on coarse mesh
@@ -677,14 +653,16 @@ class ExplicitSolver(object):
             self.store_residual()
 
             # solve on coarse mesh
-            self.advance_solution(cfl, cfl_transport,
-                                  cfl_coarse, real_time_step, time_order,
-                                  mesh_level+1)
+            self.advance_solution(cfl,
+                                  real_time_step, time_order,
+                                  mesh_level + 1)
 
         if num_mesh_levels == 1:
-            self.advance_solution(cfl, cfl_transport,cfl_coarse, real_time_step, time_order,0)
+            self.set_mesh_level(0)
+            self.advance_solution(cfl,
+                                  real_time_step, time_order, 0)
 
-            if self.finite_volume_solver != True and self.solve_cycle % self.filter_freq == 0:
+            if not self.finite_volume_solver and self.solve_cycle % self.filter_freq == 0:
                 self.solver.filter_solution()
 
         for mesh_level in xrange(num_mesh_levels - 1, 0, -1):
@@ -703,16 +681,15 @@ class ExplicitSolver(object):
             self.update_halos()
 
             # advance solution
-            self.advance_solution(cfl, cfl_transport,
-                                  cfl_coarse, real_time_step, time_order,
-                                  mesh_level-1)
+            self.advance_solution(cfl,
+                                  real_time_step, time_order,
+                                  mesh_level - 1)
 
     def report_output(self, output_name, total_cycles, real_time_cycle):
         """
         """
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
-        nparts = comm.Get_size()
         if rank == 0:
             new_file = os.path.isfile(output_name + '_report.csv')
             f = open(output_name + '_report.csv', 'a')
@@ -729,7 +706,6 @@ class ExplicitSolver(object):
         """
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
-        nparts = comm.Get_size()
         if total_cycles > 0:
             if rank == 0:
                 #
@@ -742,7 +718,8 @@ class ExplicitSolver(object):
                     restart_casename = config.parameters['restart casename']
                     if os.path.isfile(restart_casename + '_report.restart.csv'):
                         from shutil import copyfile
-                        copyfile(restart_casename + '_report.restart.csv',output_name + '_report.restart.csv')
+                        copyfile(restart_casename + '_report.restart.csv',
+                                 output_name + '_report.restart.csv')
 
                 try:
 
@@ -751,16 +728,24 @@ class ExplicitSolver(object):
                         report_file = restart_casename + '_report.csv'
                         restart_report_file = output_name + '_report.restart.csv'
 
-                        report_data = pd.read_csv(report_file, sep=' ').dropna(axis=1)
+                        report_data = pd.read_csv(
+                            report_file, sep=' ').dropna(axis=1)
                         # truncate
-                        report_data = report_data.query('Cycle <= '+ str(total_cycles))
+                        report_data = report_data.query(
+                            'Cycle <= ' + str(total_cycles))
                         # read
-                        restart_data = pd.read_csv(restart_report_file, sep=' ').dropna(axis=1)
+                        restart_data = pd.read_csv(
+                            restart_report_file, sep=' ').dropna(axis=1)
+                        # truncate
+                        restart_data = restart_data.query(
+                            'Cycle <= ' + str(total_cycles))
                         # concat
-                        #report_data = pd.concat([restart_data, report_data], ignore_index=True)
-                        report_data = restart_data.append(report_data,ignore_index=True)
+                        # report_data = pd.concat([restart_data, report_data], ignore_index=True)
+                        report_data = restart_data.append(
+                            report_data, ignore_index=True)
                         # write
-                        report_data.to_csv(restart_report_file,sep=' ',index=False)
+                        report_data.to_csv(
+                            restart_report_file, sep=' ', index=False)
 
                         """
                         f_report = open(restart_casename + '_report.csv', 'r')
@@ -804,7 +789,8 @@ class ExplicitSolver(object):
                         """
                     else:
                         from shutil import copyfile
-                        copyfile(restart_casename + '_report.csv',output_name + '_report.restart.csv')
+                        copyfile(restart_casename + '_report.csv',
+                                 output_name + '_report.restart.csv')
                 except:
                     pass
         else:
@@ -821,7 +807,6 @@ class ExplicitSolver(object):
             except:
                 pass
 
-
     # March solution in time
     def march(self, rk_index, rk_coeff, cfl, cfl_transport, real_time_step, time_order, safe_mode):
         raise NotImplementedError
@@ -830,7 +815,7 @@ class ExplicitSolver(object):
     def sync(self):
         raise NotImplementedError
 
-    def report(self):
+    def report(self, residual_only=False):
         """
         """
         raise NotImplementedError
@@ -871,3 +856,7 @@ class ExplicitSolver(object):
 
     def prolongate(self, prolongation_factor, prolongation_transport_factor):
         raise NotImplementedError
+
+    def update_source_terms(self, cycle, force):
+        # update source terms
+        self.solver.update_source_terms(cycle, force)

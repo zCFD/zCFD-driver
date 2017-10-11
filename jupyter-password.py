@@ -1,9 +1,9 @@
-# Script to create a password for the Jupyter notebook configuration 
+# Script to create a password for the Jupyter notebook configuration
 #
 # Written by Pieter de Rijk <pieter@de-rijk.com>
 #
 
-from notebook.auth import passwd 
+from notebook.auth import passwd
 import os
 
 jupyter_config = os.path.expanduser('~/.jupyter/jupyter_notebook_config.py')
@@ -19,7 +19,7 @@ print "Following will be added to %s " % (jupyter_config)
 
 jupyter_comment_start = "# Start of lines added by jupyter-password.py"
 jupyter_comment_end = "# End lines added by jupyter-passwordd.py"
-jupyter_passwd_line = "c.NotebookApp.password = u'%s'" % (pwhash) 
+jupyter_passwd_line = "c.NotebookApp.password = u'%s'" % (pwhash)
 jupyter_no_browser = "c.NotebookApp.open_browser = False"
 
 print " "

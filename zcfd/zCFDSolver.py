@@ -28,51 +28,38 @@ import os
 import sys
 import os.path
 import pkgutil
-import time
 import json
 import datetime
-
-#import logging
-#import logging.config
-
+from colorama import Fore
 from mpi4py import rc
-from argparse import _StoreFalseAction
+import yaml
 rc.initialize = False
 if 'ZCFD_TRACE' in os.environ:
     rc.profile('vt-mpi', logfile='zcfd')
 
 from mpi4py import MPI
-from colorama import Fore, Back, Style
 
-# try:
-#    import pycuda.autoinit
-# except:
-#    """"""
 
-import yaml
-
-from zcfd.utils import commandline, Parameters
-from zcfd import solvers
-from zcfd.utils import config
-from zcfd.utils import Logger
-from zcfd.utils import md5sum
-
-#import libzCFDVersion
-#import libzCFDIO
-#import libzCFDLogger
+from . import solvers
+from .utils import (
+    config,
+    commandline,
+    Parameters,
+    Logger,
+    md5sum
+)
 
 
 class zCFDSolver:
     """Worlds Fastest CFD Solver"""
 
     def main(self):
-        MPI.Init_thread(MPI.THREAD_SERIALIZED)
-        if MPI.Query_thread() != MPI.THREAD_SERIALIZED:
+        MPI.Init_thread(MPI.THREAD_MULTIPLE)
+        if MPI.Query_thread() != MPI.THREAD_MULTIPLE:
             print 'ERROR: make sure MPI is configured with thread support'
             self.terminate()
 
         self.read_commandline()
-        self.init_messageq()
         self.init_logger()
         self.show_banner()
         self.list_solvers()
@@ -103,36 +90,6 @@ class zCFDSolver:
                            r"/ /_/ /     / /__/  __/ / / / /_/ / /  /  __/ /__/ / / /  / ____/ /  / /_/ / /_/ // /_/ / /__/ /_  " + "\n" +
                            r"\__,_/     /____/\___/_/ /_/\____/_/   \___/\___/_/ /_/  /_/   /_/   \____/\__,_/ \__,_/\___/\__/  " + Fore.RESET)
 
-    def init_messageq(self):
-        # TODO For multinode parallel runs need to specify IP address of master
-        # here
-        if config.options.mq:
-            import zMQ
-            from zMessage import Message
-            print('Connecting to Message Q at', "localhost", 4001)
-            config.zmq = zMQ.Connector('localhost', 4001)
-            config.zmq.run()  # non blocking
-            found = False
-            while not found:  # Wait until a configuration file has been sent
-                item = config.zmq.q.get()  # This blocks if the queue is empty
-                if Message.is_config(item):
-                    found = True
-                    config.parameters = yaml.load(Message.get_config(item))
-                    if 'problem_name' in config.parameters:
-                        config.options.problem_name = config.parameters[
-                            'problem_name']
-                    if 'case_name' in config.parameters:
-                        config.options.case_name = config.parameters[
-                            'case_name']
-                    if 'solver' in config.parameters:
-                        config.options.solver = config.parameters['solver']
-                    config.controlfile = os.path.abspath(
-                        config.options.case_name + ".ctl.yaml")
-                    Parameters.Parameters().write_yaml()
-                config.zmq.q.task_done()
-
-    # def start_message(self):
-
     def terminate(self):
         # time.sleep(1)
         # MPI.finalize()
@@ -147,8 +104,7 @@ class zCFDSolver:
             exit(-1)
 
     def init_compute_device(self):
-        rank = MPI.COMM_WORLD.Get_rank()
-        nparts = MPI.COMM_WORLD.Get_size()
+        pass
 
     def init_logger(self):
 
@@ -157,7 +113,7 @@ class zCFDSolver:
 
         directory = str(config.options.case_name) + \
             "_P" + str(nparts) + "_OUTPUT"
-        
+
         log_path = directory + '/LOGGING'
 
         config.output_dir = directory
@@ -177,7 +133,7 @@ class zCFDSolver:
                            'case': config.options.case_name,
                            'problem': config.options.problem_name,
                            'version': zversion.get_project_version(),
-                           'date':  datetime.datetime.now().strftime("%H:%M:%S %d-%m-%Y"),
+                           'date': datetime.datetime.now().strftime("%H:%M:%S %d-%m-%Y"),
                            'case md5': md5sum(config.options.case_name + '.py'),
                            },
                           f, indent=4)
@@ -187,17 +143,17 @@ class zCFDSolver:
         config.logger = Logger.Logger(rank, filename=os.path.join(
             log_path, config.options.case_name + "." + str(rank) + ".log"), connector=config.zmq)
 
-        #config.logger = libzCFDLogger.getLogger()
-        #fh = libzCFDLogger.FileLogger(config.problem_name+"."+str(rank)+".log");
+        # config.logger = libzCFDLogger.getLogger()
+        # fh = libzCFDLogger.FileLogger(config.problem_name+"."+str(rank)+".log");
         # config.logger.addHandler(fh)
 
-        #config.filelogger = fh
+        # config.filelogger = fh
         # if rank == 0:
         #    ch = libzCFDLogger.StdOutLogger()
         #    config.logger.addHandler(ch)
         #    config.streamlogger = ch
         #
-        #config.logger.debug('Initialised Logging')
+        # config.logger.debug('Initialised Logging')
         """
         #logging.config.fileConfig('zcfd/logging.conf')
         logging.basicConfig(level=logging.NOTSET)
@@ -237,7 +193,7 @@ class zCFDSolver:
         # print names
 
     def read_commandline(self):
-        #config.logger.debug("Reading commandline")
+        # config.logger.debug("Reading commandline")
         options = commandline.ZOption()
         config.options = options.parse()
 
@@ -281,6 +237,7 @@ class zCFDSolver:
             config.logger.info("Control file: " + config.controlfile)
             p = Parameters.Parameters()
             p.read(cfilename)
+            config.logger.info("Parameters: " + str(config.parameters))
             return True
         else:
             config.logger.info("Creating missing control file with defaults")
@@ -296,7 +253,7 @@ class zCFDSolver:
         solver_name_map = {
             'euler': 'EulerSolver',
             'viscous': 'ViscousSolver',
-            'RANS': 'MenterSSTSolver',
+            'RANS': 'TurbulentSolver',
             'LES': 'ViscousSolver',
             'DGeuler': 'DGExplicitSolver',
             'DGviscous': 'DGExplicitSolver',
@@ -319,9 +276,6 @@ class zCFDSolver:
 
     def initialise_solver(self):
         config.logger.debug("Initialising Solver")
-        comm = MPI.COMM_WORLD
-        nparts = comm.Get_size()
-        rank = comm.Get_rank()
         config.solver.initialise()
 
     def start_solver(self):
@@ -333,6 +287,7 @@ class zCFDSolver:
     def ensure_dir(self, d):
         if not os.path.exists(d):
             os.makedirs(d)
+
 
 if __name__ == "__main__":
     zcfd = zCFDSolver()

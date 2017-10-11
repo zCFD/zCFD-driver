@@ -25,35 +25,55 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-"""
-import xml.dom.minidom
 
-from zcfd.utils import config
+def exp_ramp(solve_cycle, real_time_cycle, cfl):
+    if cfl.cfl_ramp > 1.0 and real_time_cycle == 0 and solve_cycle < 500:
+        return min(cfl.min_cfl * cfl.cfl_ramp ** (max(0, solve_cycle - 1)), cfl.max_cfl)
+    else:
+        return cfl.max_cfl
 
 
-class ControlFile:
-#    Control file handling functions
-    def read_controlfile(self):
-        dom = xml.dom.minidom.parse(config.controlfile)
+class CFL:
 
-    def create_controlfile(self):
-        from xml.etree.ElementTree import Element, SubElement, Comment
-        from zcfd.utils.XMLPretty import prettify
+    def __init__(self, cfl):
+        self.min_cfl = cfl
+        self.max_cfl = cfl
+        self.current_cfl = cfl
+        self.coarse_cfl = cfl
+        self.transport_cfl = cfl
+        self.cfl_ramp = 1.0
+        self.cfl_pmg = []
+        self.transport_cfl_pmg = []
 
-        top = Element('zcfd')
+    @property
+    def cfl(self):
+        return self.current_cfl
 
-        comment = Comment('Generated for zCFD')
-        top.append(comment)
-        child = SubElement(top, 'SolverControl')
-        nchild = SubElement(child, 'cycles')
-        nchild.text = str(1000)
-        nchild = SubElement(child, 'cfl')
-        nchild.text = str(1.0)
-        child = SubElement(top, 'Conditions')
-        nchild = SubElement(child, 'mach')
-        nchild.text = str(0.5)
-        print prettify(top)
-        f = open(config.controlfile, "w")
-        f.write(prettify(top))
+    def pmg_cfl(self,pmg_level):
+        if len(self.cfl_pmg) > pmg_level:
+            return self._scale_factor * self.cfl_pmg[pmg_level]
+        else:
+            return self.cfl        
 
-"""
+    def pmg_transport(self,pmg_level):
+        if len(self.transport_cfl_pmg) > pmg_level:
+            return self._scale_factor * self.transport_cfl_pmg[pmg_level]
+        else:
+            return self.transport
+
+    @property
+    def coarse(self):
+        return self.coarse_cfl * self._scale_factor
+
+    @property
+    def transport(self):
+        return self.transport_cfl * self._scale_factor
+
+    @property
+    def _scale_factor(self):
+        return self.current_cfl / self.max_cfl
+
+    def update(self, solve_cycle, real_time_cycle, ramp_func):
+        if ramp_func is None:
+            ramp_func = exp_ramp
+        self.current_cfl = ramp_func(solve_cycle, real_time_cycle, self)

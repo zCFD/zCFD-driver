@@ -24,11 +24,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-#import json
 import sys
 import os
 import yaml
 from zcfd.utils import config
+from zcfd.parameters import validate
+
 
 # Timestamp of parameter file when file was last read
 last_timestamp = 0
@@ -49,7 +50,7 @@ parameters = {
 'reference' : 'IC_1',
 
 # restart from previous solution
-'restart' : 'false',
+'restart' : False,
 
 'partitioner' : 'metis',
 
@@ -77,17 +78,17 @@ parameters = {
 'euler' : {
       'order' : 'second',
       'limiter' : 'vanalbada',
-      'precondition' : 'true',
+      'precondition' : True,
      },
 'viscous' : {
         'order' : 'second',
         'limiter' : 'vanalbada',
-       'precondition' : 'true',
+       'precondition' : True,
       },
 'RANS' : {
                'order' : 'second',
                'limiter' : 'vanalbada',
-               'precondition' : 'true',
+               'precondition' : True,
                'turbulence' : {
                                'model' : 'sst',
                               },
@@ -95,7 +96,7 @@ parameters = {
 'DES' : {
               'order' : 'second',
               'limiter' : 'vk',
-              'precondition' : 'true',
+              'precondition' : True,
               'turbulence' : {
                               'model' : 'sst',
                               },
@@ -103,19 +104,11 @@ parameters = {
 'LES' : {
                   'order' : 'second',
                   'limiter' : 'vk',
-                  'precondition' : 'true',
+                  'precondition' : True,
                    'turbulence' : {
                                   'model' : 'sst',
                                   },
                   },
-'material' : 'air',
-'air' : {
-        'gamma' : 1.4,
-        'gas constant' : 287.0,
-        'Sutherlands const': 110.4,
-        'Prandtl No' : 0.72,
-        'Turbulent Prandtl No' : 0.9,
-        },
 'IC_1' : {
           'temperature':273.15,
           'pressure':101325.0,
@@ -199,7 +192,7 @@ parameters = {
 
         config.parameters = locals()["parameters"]
 
-        #config.logger.debug("Default Parameters: \n "+'\n '.join(['%s: %s' % (key, value) for (key, value) in config.parameters.items()]))
+        # config.logger.debug("Default Parameters: \n "+'\n '.join(['%s: %s' % (key, value) for (key, value) in config.parameters.items()]))
 
     def read(self, configfile):
         config.logger.debug(__file__ + " " + __name__ + ":read")
@@ -215,6 +208,9 @@ parameters = {
         parameters = getattr(sys.modules[configfile], 'parameters')
         # TODO Need to improve this
         config.parameters = dict(config.parameters, **parameters)
+
+        # Validate
+        config.parameters = validate(config.parameters)
 
         props = os.stat(config.controlfile)
         global last_timestamp
@@ -260,9 +256,6 @@ parameters = {
             ArrayOf, POD,
             Block,
             For, Statement, Struct)
-        #======================================================================
-        # Line Comment Constant Pointer
-        #======================================================================
         from cgen import dtype_to_ctype
         import numpy
 

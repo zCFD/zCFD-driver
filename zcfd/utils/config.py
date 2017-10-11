@@ -44,8 +44,6 @@ cycle_info = 0
 start_time = 0
 end_time = 0
 
-def is_true(key):
-    return (key == True) or key.lower() == "true" or key.lower() == "t"
 
 def get_space_order(equations):
     global parameters

@@ -66,6 +66,14 @@ class Stopwatch(object):
         if self.count == 0:
             return 0.0
         return self.getElapsedMillis() / self.count
+
+    def getElapsedTimeDayHourMinSec(self):
+        seconds = self.getElapsedMillis() / 1000
+        days, seconds = divmod(seconds, 24 * 60 * 60)
+        hours, seconds = divmod(seconds, 60 * 60)
+        minutes, seconds = divmod(seconds, 60)
+        return days, hours, minutes, seconds
+
 # -----------------------------------------------------------------------------
 
 
@@ -178,12 +186,13 @@ class TimeSpent(object):
 
         report = ""
         report += ("Elapsed seconds: %.1f\n" % secondsSinceReport)
-        report += "Breakdown of time spent (in milliseconds):\n"
+        report += "Breakdown of time spent:\n"
         for name in sorted(self.stopwatches.keys()):
             stopwatch = self.stopwatches[name]
-            report += ("%s: %.0f (count: %d avg: %.1f)\n"
+            elapsed = stopwatch.getElapsedTimeDayHourMinSec()
+            report += ("%s: %.0f days %.0f hrs %.0f mins %.0f s (count: %d cycles, avg: %.1f ms)\n"
                        % (name,
-                          stopwatch.getElapsedMillis(),
+                          elapsed[0], elapsed[1], elapsed[2], elapsed[3],
                           stopwatch.count,
                           stopwatch.getAvgElapsedMillis()))
         return report

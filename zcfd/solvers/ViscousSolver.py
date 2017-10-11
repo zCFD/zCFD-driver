@@ -34,8 +34,8 @@ class ViscousSolver(ExplicitSolver):
 
     def initialise(self):
 
-        precondition = (config.parameters[self.equations][
-                        'precondition'] == 'true')
+        precondition = config.parameters[self.equations][
+            'precondition']
         solver_name = "Viscous Solver"
         if precondition:
             solver_name += " (Low M Preconditioned)"
@@ -46,6 +46,8 @@ class ViscousSolver(ExplicitSolver):
         config.solver_native = 0
 
         solver_type = "VISCOUS"
+
+        precondition = False
 
         self.parameter_update()
         self.solver = load_solver_runtime({"dg": False,
@@ -93,10 +95,10 @@ class ViscousSolver(ExplicitSolver):
     def host_sync(self):
         self.solver.host_sync()
 
-    def report(self):
+    def report(self, residual_only=False):
         """
         """
-        return self.solver.report()
+        return self.solver.report(residual_only)
 
     def calculate_rhs(self, real_time_step, time_order):
         self.solver.calculate_rhs(real_time_step, time_order, self.space_order)

@@ -1,5 +1,6 @@
 import importlib
 from zcfd.utils import config
+from ctypes import cdll
 
 
 def load_solver_runtime(params, solver_params):
@@ -14,8 +15,7 @@ def load_solver_runtime(params, solver_params):
         module_name = "libzCFDSolver"
     module_name += params["type"]
 
-    if ((type(params["precond"]) is str and params["precond"] == 'true') or
-            (type(params["precond"]) is bool and params["precond"])):
+    if params["precond"]:
         module_name += "PRECOND"
 
     if params["medium"] == "air":
@@ -35,6 +35,9 @@ def load_solver_runtime(params, solver_params):
 
     config.logger.info(" Loading Library: " + module_name)
     try:
+        # Fix for Linux TLS issue on certain machines
+        metislib = cdll.LoadLibrary("libmetis.so")
+
         solverlib = importlib.import_module(module_name)
     except Exception as e:
         config.logger.info(" Unable to load " + module_name)

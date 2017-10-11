@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-#try: paraview.simple
-#except:
+# try: paraview.simple
+# except:
 
 from paraview.simple import *
 
@@ -37,7 +37,7 @@ from scipy.optimize import curve_fit
 from zutil import rotate_vector
 
 alpha = 0.0
-beta  = 0.0
+beta = 0.0
 reference_area = 1.0
 #bl_position = 0.97
 #face_area = 0.075823
@@ -45,7 +45,7 @@ reference_area = 1.0
 
 def calc_drag(file_root):
 
-    wall = PVDReader( FileName=file_root+'_wall.pvd' )
+    wall = PVDReader(FileName=file_root + '_wall.pvd')
 
     CellDatatoPointData1 = CellDatatoPointData(Input=wall)
     CellDatatoPointData1.PassCellData = 1
@@ -59,16 +59,17 @@ def calc_drag(file_root):
     #fforce = sum_client.GetCellData().GetArray("frictionforce").GetTuple(0)
     #yplus = wall_slice_client.GetCellData().GetArray("yplus").GetValue(0)
 
-    pforce = rotate_vector(pforce,alpha,beta)
+    pforce = rotate_vector(pforce, alpha, beta)
     #fforce = rotate_vector(fforce,alpha,beta)
 
     return pforce
 
-def drag_curve(x,a,b,c,d):
-    return a*a*a*x + b*b*x + c*x + d
+
+def drag_curve(x, a, b, c, d):
+    return a * a * a * x + b * b * x + c * x + d
 
 
-#Connect('localhost')
+# Connect('localhost')
 ReverseConnect('11111')
 
 num_procs = '24'
@@ -76,39 +77,43 @@ pressure = 87510.53
 gamma = 1.4
 
 case = 'm0p5'
-mach  = 0.5
-q     = 1.0e6#(0.5*gamma*pressure*mach*mach)
+mach = 0.5
+q = 1.0e6  # (0.5*gamma*pressure*mach*mach)
 alpha = 0.0
-beta  = 0.0
-force_m0p5 = calc_drag('C13_2013-04-04-half-'+case+'_P'+num_procs+'_OUTPUT/C13_2013-04-04-half-'+case)
-for i in range(0,3):
+beta = 0.0
+force_m0p5 = calc_drag('C13_2013-04-04-half-' + case +
+                       '_P' + num_procs + '_OUTPUT/C13_2013-04-04-half-' + case)
+for i in range(0, 3):
     force_m0p5[i] /= q
 
 case = 'm0p8'
-mach  = 0.8
-q     = 1.0e6#(0.5*gamma*pressure*mach*mach)
+mach = 0.8
+q = 1.0e6  # (0.5*gamma*pressure*mach*mach)
 alpha = 0.0
-beta  = 0.0
-force_m0p8 = calc_drag('C13_2013-04-04-half-'+case+'_P'+num_procs+'_OUTPUT/C13_2013-04-04-half-'+case)
-for i in range(0,3):
+beta = 0.0
+force_m0p8 = calc_drag('C13_2013-04-04-half-' + case +
+                       '_P' + num_procs + '_OUTPUT/C13_2013-04-04-half-' + case)
+for i in range(0, 3):
     force_m0p8[i] /= q
 
 case = 'm1p1'
-mach  = 1.1
-q     = 1.0e6#(0.5*gamma*pressure*mach*mach)
+mach = 1.1
+q = 1.0e6  # (0.5*gamma*pressure*mach*mach)
 alpha = 0.0
-beta  = 0.0
-force_m1p1 = calc_drag('C13_2013-04-04-half-'+case+'_P'+num_procs+'_OUTPUT/C13_2013-04-04-half-'+case)
-for i in range(0,3):
+beta = 0.0
+force_m1p1 = calc_drag('C13_2013-04-04-half-' + case +
+                       '_P' + num_procs + '_OUTPUT/C13_2013-04-04-half-' + case)
+for i in range(0, 3):
     force_m1p1[i] /= q
 
 case = 'm1p3'
-mach  = 1.3
-q     = 1.0e6#(0.5*gamma*pressure*mach*mach)
+mach = 1.3
+q = 1.0e6  # (0.5*gamma*pressure*mach*mach)
 alpha = 0.0
-beta  = 0.0
-force_m1p3 = calc_drag('C13_2013-04-04-half-'+case+'_P'+num_procs+'_OUTPUT/C13_2013-04-04-half-'+case)
-for i in range(0,3):
+beta = 0.0
+force_m1p3 = calc_drag('C13_2013-04-04-half-' + case +
+                       '_P' + num_procs + '_OUTPUT/C13_2013-04-04-half-' + case)
+for i in range(0, 3):
     force_m1p3[i] /= q
 
 print force_m0p5
@@ -116,15 +121,15 @@ print force_m0p8
 print force_m1p1
 print force_m1p3
 
-x = [0.0,0.5,0.8,1.1,1.3]
-y = [0.0,force_m0p5[0],force_m0p8[0],force_m1p1[0],force_m1p3[0]]
+x = [0.0, 0.5, 0.8, 1.1, 1.3]
+y = [0.0, force_m0p5[0], force_m0p8[0], force_m1p1[0], force_m1p3[0]]
 
 from scipy.interpolate import interp1d
 f2 = interp1d(x, y, kind='cubic')
 xnew = np.linspace(0.5, 1.3, 10)
 
 
-pl.plot(x,y,xnew,f2(xnew))
+pl.plot(x, y, xnew, f2(xnew))
 
 
-#Render()
+# Render()

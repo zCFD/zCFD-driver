@@ -24,24 +24,19 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-#import logging
-#import optparse
 from mpi4py import MPI
 import argparse
-#from zcfd.utils import config
 
 
 class ZOption:
 
     def parse(self):
-        #config.logger.debug('Start ZOption parse')
+        # config.logger.debug('Start ZOption parse')
         if MPI.COMM_WORLD.Get_rank() > 0:
             usage = argparse.SUPPRESS
-            #parser = OptionParser(usage, add_help_option=False)
             parser = argparse.ArgumentParser(usage=usage, add_help=False)
         else:
             usage = "usage: %(prog)s [options] PROBLEM-NAME"
-            #parser = OptionParser(usage, version="%prog 1.0", add_help_option=True)
             parser = argparse.ArgumentParser(
                 usage=usage, description="zCFD command line arguments", add_help=True)
 
@@ -54,8 +49,6 @@ class ZOption:
 
         parser.add_argument("-c", "--case-name", dest="case_name",
                             metavar="CASE-NAME", default=None, help="Case name")
-        # parser.add_argument("-s","--solver", dest="solver",
-        # metavar="SOLVER", default=None, help="Name of solver to use")
         parser.add_argument("-d", "--device", dest="device",
                             metavar="DEVICE", default="cpu", help="Execution mode: cpu or gpu [default: %(default)s]")
         # parser.add_argument("-l","--loglevel", dest="loglevel",
@@ -76,8 +69,9 @@ class ZOption:
             if args.case_name is None:
                 args.case_name = args.problem_name
         # exit(-1)
-        #config.logger.debug('End ZOption parse')
+        # config.logger.debug('End ZOption parse')
         return args
+
 
 if __name__ == "__main__":
     opt = ZOption()

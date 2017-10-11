@@ -29,44 +29,48 @@ from zcfd.solvers.ExplicitSolver import ExplicitSolver
 from zcfd.solvers.utils.RuntimeLoader import load_solver_runtime
 
 
-class MenterSSTSolver(ExplicitSolver):
-    """Menter SST RANS Solver"""
+class TurbulentSolver(ExplicitSolver):
+    """Turbulent Solver"""
 
     def initialise(self):
         config.solver_native = 0
         # Read in mesh
-        #from libzCFDMeshEULERAIR import Mesh
-        #m = Mesh()
+        # from libzCFDMeshEULERAIR import Mesh
+        # m = Mesh()
         # m.read_mesh(config.options.problem_name)
         # Initialise solution (need ability for user to specify initialiser)
 
         # Initialise outputs
-        transition = False
-        if 'transition' in config.parameters['RANS']:
-            if config.parameters['RANS']['transition'] == 'true':
-                transition = True
-        precondition = False
-        if 'precondition' in config.parameters['RANS']:
-            if config.parameters['RANS']['precondition'] == 'true':
-                precondition = True
+        transition = config.parameters['RANS'].get('transition', False)
+        precondition = config.parameters['RANS'].get('precondition', False)
         sas = False
-        if config.parameters['RANS']['turbulence']['model'] == 'sas':
-            sas = True
+        sas = (config.parameters['RANS']['turbulence']['model'] == 'sas')
+        sst = False
+        sst = (config.parameters['RANS']['turbulence']['model'] == 'sst')
+        saneg = False
+        saneg = (config.parameters['RANS']['turbulence']['model'] == 'sa-neg')
 
-        solver_name = "RANS Menter"
-        solver_type = "MENTER"
+        solver_name = "Turbulent"
+
         if sas:
-            solver_name += " SAS"
-            solver_type += "SAS"
-        else:
-            solver_name += " SST"
+            solver_name += " Menter SAS"
+            solver_type = "MENTER"
+        if sst:
+            solver_name += " Menter SST"
+            solver_type = "MENTER"
+        if saneg:
+            solver_name += " Spalart Allmaras Neg"
+            solver_type = "SANEG"
+
         if transition:
-            solver_name += " Transition"
-            solver_type += "TRANS"
+            solver_name += " Menter SST Transition"
+            solver_type = "MENTERTRANS"
 
         if precondition:
             solver_name += " (Low M Preconditioned)"
         solver_name += " Solver Initialise"
+
+        precondition = False
 
         config.logger.info(solver_name)
 
@@ -88,7 +92,7 @@ class MenterSSTSolver(ExplicitSolver):
         config.cycle_info = self.solver.init_solution(config.options.case_name)
 
     def parameter_update(self):
-        super(MenterSSTSolver, self).parameter_update()
+        super(TurbulentSolver, self).parameter_update()
         self.space_order = config.get_space_order('RANS')
 
     def march(self, rk_index, rk_coeff, cfl, cfl_transport, real_time_step,
@@ -116,10 +120,10 @@ class MenterSSTSolver(ExplicitSolver):
     def host_sync(self):
         self.solver.host_sync()
 
-    def report(self):
+    def report(self, residual_only=False):
         """
         """
-        return self.solver.report()
+        return self.solver.report(residual_only)
 
     def calculate_rhs(self, real_time_step, time_order):
         self.solver.calculate_rhs(real_time_step, time_order, self.space_order)

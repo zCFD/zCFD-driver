@@ -60,9 +60,16 @@ class DGExplicitSolver(ExplicitSolver):
             solver_type = "DGMENTERDES"
 
         if self.equations == 'DGRANS':
-            config.logger.info("DG RANS SST Solver Initialise")
-            config.solver_native = 0
-            solver_type = "DGRANS"
+            if config.parameters['DGRANS']['turbulence']['model'] == 'sst':
+                config.logger.info("DG RANS SST Solver Initialise")
+                config.solver_native = 0
+                solver_type = "DGMENTER"
+            if config.parameters['DGRANS']['turbulence']['model'] == 'sa-neg':
+                config.logger.info("DG RANS SA-Neg Solver Initialise")
+                config.solver_native = 0
+                solver_type = "DGSANEG"
+
+        precond = False
 
         self.parameter_update()
 
@@ -75,7 +82,7 @@ class DGExplicitSolver(ExplicitSolver):
                                            },
                                           config.parameters)
 
-        if not config.parameters.has_key('Nodal Locations'):
+        if 'Nodal Locations' not in config.parameters:
             from zcfd.solvers.utils.DGNodalLocations import nodal_locations_default
             config.parameters.update(nodal_locations_default)
 
@@ -96,50 +103,111 @@ class DGExplicitSolver(ExplicitSolver):
                 self.local_timestepping = False
 
         if 'multipoly' in config.parameters['time marching']:
-            if config.is_true(config.parameters['time marching']['multipoly']) and (self.lusgs == False):
+            if config.parameters['time marching']['multipoly'] and not self.lusgs:
                 self.PMG = True
+
+        if 'cfl for pmg levels' in config.parameters['time marching']:
+            tmp_list = config.parameters[
+                'time marching']['cfl for pmg levels']
+            if len(tmp_list) > self.space_order:
+                self.cfl.cfl_pmg = tmp_list
+                self.cfl.max_cfl = self.cfl.cfl_pmg[0]
+
+        if 'cfl transport for pmg levels' in config.parameters['time marching']:
+            tmp_list = config.parameters[
+                'time marching']['cfl transport for pmg levels']
+            if len(tmp_list) > self.space_order:
+                self.cfl.transport_cfl_pmg = tmp_list
+                self.cfl.transport_cfl = self.cfl.transport_cfl_pmg[0]
+
+        if 'multipoly cycle pattern' in config.parameters['time marching']:
+            self.pmg_pattern = config.parameters['time marching']['multipoly cycle pattern']
+
+            for cycle in self.pmg_pattern:
+                if cycle > self.space_order:
+                    raise ValueError("Cycle pattern defined by \'multipoly cycle pattern\' incompatible with \'order\' - Please correct")
+
+            if len(self.pmg_pattern) > 1:
+                if self.pmg_pattern[0] > self.pmg_pattern[1]:
+                    raise ValueError("\'multipoly cycle pattern\' does not appear to be correctly defined.  E.g. for a V-cycle with P2 as finest level use [0,1,2,1,0]")
+        else:
+            # Default is a V-cycle
+            self.pmg_pattern = []
+            for index in xrange(self.space_order + 1):
+                self.pmg_pattern.append(index)
+            for index in xrange(self.space_order - 1, -1, -1):
+                self.pmg_pattern.append(index)
 
         self.finite_volume_solver = False
 
-    def advance_solution(self, cfl, cfl_transport, cfl_coarse, real_time_step, time_order, mesh_level):
+    def advance_solution(self, cfl, real_time_step, time_order, mesh_level):
         """
         """
-        if (self.PMG):
+        if (self.PMG and self.solve_cycle <= self.multigrid_cycles):
 
             # Perform time step at highest order (1)
             self.copy_solution()
             for rk_index in xrange(len(self.rk.coeff())):
                 # Runge-Kutta loop
                 valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[
-                                   rk_index], cfl, cfl_transport, real_time_step, time_order, self.safe_mode, 0)
+                                   rk_index], cfl.pmg_cfl(0), cfl.pmg_transport(0), real_time_step, time_order, self.safe_mode, 0)
                 if self.safe_mode and not valid:
                     raise InvalidSolution
 
-            for polyLevel in xrange(self.space_order):
+            computeForcing = True
+            for pmg_cycle in xrange(len(self.pmg_pattern) - 1):
+                if self.pmg_pattern[pmg_cycle] < self.pmg_pattern[pmg_cycle + 1] and computeForcing:
+                    # Restrict solution and residual to poly level below
+                    # Compute force terms
+                    self.solver.restrictToPolynomialLevel(self.pmg_pattern[pmg_cycle], self.pmg_pattern[pmg_cycle + 1], real_time_step, time_order, cfl.pmg_cfl(0))
 
-                # Restrict solution and residual to poly level below
-                # Compute force terms
-                self.solver.restrictToPolynomialLevel(
-                    polyLevel, polyLevel + 1, real_time_step, time_order, cfl)
+                    # March lower level (4)
+                    self.copy_solution()
+                    for rk_index in xrange(len(self.rk.coeff())):
+                        # Runge-Kutta loop
+                        valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[rk_index], cfl.pmg_cfl(pmg_cycle), cfl.pmg_transport(pmg_cycle), real_time_step, time_order, self.safe_mode, self.pmg_pattern[pmg_cycle + 1])
+                        if self.safe_mode and not valid:
+                            raise InvalidSolution
 
-                # March lower level (4)
-                self.copy_solution()
-                for rk_index in xrange(len(self.rk.coeff())):
-                    # Runge-Kutta loop
-                    valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[
-                                       rk_index], cfl, cfl_transport, real_time_step, time_order, self.safe_mode, polyLevel + 1)
-                    if self.safe_mode and not valid:
-                        raise InvalidSolution
+                elif self.pmg_pattern[pmg_cycle] < self.pmg_pattern[pmg_cycle + 1] and not computeForcing:
+                    self.solver.restrictSolutionOnlyToPolynomialLevel(self.pmg_pattern[pmg_cycle], self.pmg_pattern[pmg_cycle + 1])
+                    # March lower level (4)
+                    self.copy_solution()
+                    self.update_halos(self.pmg_pattern[pmg_cycle + 1])
+                    for rk_index in xrange(len(self.rk.coeff())):
+                        # Runge-Kutta loop
+                        valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[rk_index], cfl.pmg_cfl(pmg_cycle), cfl.pmg_transport(pmg_cycle), real_time_step, time_order, self.safe_mode, self.pmg_pattern[pmg_cycle + 1])
+                        if self.safe_mode and not valid:
+                            raise InvalidSolution
 
-            for polyLevel in xrange(self.space_order):
-                self.solver.addPolyCorrections(
-                    self.space_order - polyLevel, self.space_order - polyLevel - 1)
+                elif self.pmg_pattern[pmg_cycle] > self.pmg_pattern[pmg_cycle + 1]:
+                    self.solver.addPolyCorrections(self.pmg_pattern[pmg_cycle], self.pmg_pattern[pmg_cycle + 1])
+                    if self.pmg_pattern[pmg_cycle + 1] != 0:
+                        computeForcing = False
+                        # March lower level (4)
+                        self.copy_solution()
+                        self.update_halos(self.pmg_pattern[pmg_cycle + 1])
+                        for rk_index in xrange(len(self.rk.coeff())):
+                            # Runge-Kutta loop
+                            valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[rk_index], cfl.pmg_cfl(pmg_cycle), cfl.pmg_transport(pmg_cycle), real_time_step, time_order, self.safe_mode, self.pmg_pattern[pmg_cycle + 1])
+                            if self.safe_mode and not valid:
+                                raise InvalidSolution
+
+                elif self.pmg_pattern[pmg_cycle] == self.pmg_pattern[pmg_cycle + 1]:
+                    self.copy_solution()
+                    self.update_halos(self.pmg_pattern[pmg_cycle + 1])
+                    for rk_index in xrange(len(self.rk.coeff())):
+                        # Runge-Kutta loop
+                        valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[rk_index], cfl.pmg_cfl(pmg_cycle), cfl.pmg_transport(pmg_cycle), real_time_step, time_order, self.safe_mode, self.pmg_pattern[pmg_cycle + 1])
+                        if self.safe_mode and not valid:
+                            raise InvalidSolution
+
         else:
             self.copy_solution()
             for rk_index in xrange(len(self.rk.coeff())):
                 # Runge-Kutta loop
                 valid = self.march(rk_index, self.rk.coeff()[rk_index], self.rk.rkstage_scaling()[rk_index], self.rk.time_leveln_scaling()[
-                                   rk_index], cfl, cfl_transport, real_time_step, time_order, self.safe_mode, 0)
+                                   rk_index], cfl.cfl, cfl.transport, real_time_step, time_order, self.safe_mode, 0)
                 if self.safe_mode and not valid:
                     raise InvalidSolution
 
@@ -187,8 +255,8 @@ class DGExplicitSolver(ExplicitSolver):
     def restrict(self):
         self.solver.restrict()
 
-    def update_halos(self):
-        self.solver.update_halos()
+    def update_halos(self, level):
+        self.solver.update_halos(level, False)
 
     def prolongate(self, prolongation_factor, prolongation_transport_factor):
         self.solver.prolongate(prolongation_factor,

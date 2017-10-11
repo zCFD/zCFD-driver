@@ -37,7 +37,7 @@ class Logger:
 
         try:
             fh = libzCFDLogger.FileLogger(filename)
-        except Exception, e:
+        except Exception as e:
             print e
             raise
 

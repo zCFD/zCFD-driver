@@ -33,10 +33,7 @@ class EulerSolver(ExplicitSolver):
     """Euler Solver"""
 
     def initialise(self):
-        precondition = False
-        if 'precondition' in config.parameters['euler']:
-            if config.parameters['euler']['precondition'] == 'true':
-                precondition = True
+        precondition = config.parameters['euler'].get('precondition', False)
 
         solver_name = "Euler Solver"
         if precondition:
@@ -47,6 +44,8 @@ class EulerSolver(ExplicitSolver):
         config.solver_native = 0
 
         self.parameter_update()
+
+        precondition = False
 
         solver_type = "EULER"
         self.solver = load_solver_runtime({"dg": False,
@@ -95,10 +94,10 @@ class EulerSolver(ExplicitSolver):
     def host_sync(self):
         self.solver.host_sync()
 
-    def report(self):
+    def report(self, residual_only=False):
         """
         """
-        return self.solver.report()
+        return self.solver.report(residual_only)
 
     def calculate_rhs(self, real_time_step, time_order):
         self.solver.calculate_rhs(real_time_step, time_order, self.space_order)
