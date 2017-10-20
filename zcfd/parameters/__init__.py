@@ -24,7 +24,7 @@ def validate(d):
             'preconditioner': {Required('factor'): Number()},
             Required('equations'):
                 Any('euler', 'RANS', 'viscous', 'LES',
-                    'DGviscous', 'DGRANS', 'DGeuler', 'DGMenterDES', 'DGLES'),
+                    'DGviscous', 'DGRANS', 'DGeuler'), # , 'DGLES'),
             'report': {Required('frequency'): All(Coerce(int), Range(min=1)),
                        'monitor': dict,
                        'forces': dict,
@@ -247,8 +247,7 @@ def validate(d):
         'DGviscous': dg_viscous_schema,
         'DGRANS': dg_rans_schema,
         'DGeuler': dg_euler_schema,
-        'DGMenterDES': dg_rans_schema,
-        'DGLES': dg_rans_schema,
+#        'DGLES': dg_rans_schema,
     }
 
     d[material_key] = material_schema(d.get(material_key, {}))

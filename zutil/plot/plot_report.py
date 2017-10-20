@@ -12,6 +12,9 @@ import os
 
 class Report(object):
 
+    def __init__(self):
+        self.header_list = None
+
     def plot_test(self, report_file):
 
         self.resildual_checkboxes = []
@@ -114,6 +117,9 @@ class Report(object):
         plt.show()
 
     def plot_forces(self):
+
+        if self.header_list is None:
+            return
 
         self.checkboxes = []
         cb_container = widgets.VBox()

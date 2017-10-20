@@ -54,11 +54,6 @@ class DGExplicitSolver(ExplicitSolver):
             config.solver_native = 0
             solver_type = "DGLESWALE"
 
-        if self.equations == 'DGMenterDES':
-            config.logger.info("DG Menter SST DES Solver Initialise")
-            config.solver_native = 0
-            solver_type = "DGMENTERDES"
-
         if self.equations == 'DGRANS':
             if config.parameters['DGRANS']['turbulence']['model'] == 'sst':
                 config.logger.info("DG RANS SST Solver Initialise")

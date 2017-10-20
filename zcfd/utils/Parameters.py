@@ -65,7 +65,7 @@ parameters = {
                    'scheme' : {
                                'name' : 'runge kutta',
                                'stage': 5,
-                               'kind' : 'local timestep',
+                               'kind' : 'local timestepping',
                                },
                    # multigrid levels including fine mesh
                    'multigrid' : 4,
@@ -93,22 +93,6 @@ parameters = {
                                'model' : 'sst',
                               },
                },
-'DES' : {
-              'order' : 'second',
-              'limiter' : 'vk',
-              'precondition' : True,
-              'turbulence' : {
-                              'model' : 'sst',
-                              },
-              },
-'LES' : {
-                  'order' : 'second',
-                  'limiter' : 'vk',
-                  'precondition' : True,
-                   'turbulence' : {
-                                  'model' : 'sst',
-                                  },
-                  },
 'IC_1' : {
           'temperature':273.15,
           'pressure':101325.0,
@@ -231,7 +215,7 @@ parameters = {
         if config.logger != 0:
             config.logger.debug(__file__ + " " + __name__ + ":write")
         # Open control file for writing
-        fp = open(config.controlfile, "w")
+        fp = open(configfile, "w")
         # Write control file in yaml format
         fp.write(self.default)
 

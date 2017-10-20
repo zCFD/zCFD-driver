@@ -91,8 +91,8 @@ class ExplicitSolver(object):
         if 'cfl ramp factor' in config.parameters['time marching']:
             self.cfl.cfl_ramp = config.parameters[
                 'time marching']['cfl ramp factor'].get('growth', 1.0)
-            self.cfl.min_cfl = config.parameters[
-                'time marching']['cfl ramp factor']['initial']
+            self.cfl.min_cfl = min(self.cfl.max_cfl,config.parameters[
+                'time marching']['cfl ramp factor']['initial'])
         if 'ramp func' in config.parameters['time marching']:
             self.cfl_ramp_func = config.parameters[
                 'time marching']['ramp func']

@@ -219,6 +219,7 @@ class zCFDSolver:
             ok = False
             if MPI.COMM_WORLD.Get_rank() == 0:
                 print(" Control file: %s not found" % (case_filename))
+                Parameters.Parameters().write(case_filename)
         if not os.path.isfile(problem_filename):
             ok = False
             if MPI.COMM_WORLD.Get_rank() == 0:
@@ -258,7 +259,6 @@ class zCFDSolver:
             'DGeuler': 'DGExplicitSolver',
             'DGviscous': 'DGExplicitSolver',
             'DGLES': 'DGExplicitSolver',
-            'DGMenterDES': 'DGExplicitSolver',
             'DGRANS': 'DGExplicitSolver'
         }
         solver_name = solver_name_map.get(equations, None)
